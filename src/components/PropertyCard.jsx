@@ -53,7 +53,7 @@ export default function PropertyCard({
   const cap = capRate(p);
 
   return (
-    <div className={`property-card ${rentPaid ? 'rent-paid' : 'rent-due'}`}>
+    <div className="property-card">
       <div className="card-head" onClick={onToggle}>
         <div className="card-head-top">
           <div className="card-street">{p.street}</div>
@@ -70,7 +70,7 @@ export default function PropertyCard({
                 onRentPaid();
               }}
             >
-              {rentPaid ? 'RENT PAID' : 'RENT DUE'}
+              {rentPaid ? '✓ Rent paid' : '✕ Rent due'}
             </button>
           </div>
         </div>

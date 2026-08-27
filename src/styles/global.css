@@ -14,14 +14,17 @@
   --dot: #b9ac8c;
   --cream: #f5f1e4;
 
-  /* Accent — swapped per request: red is the primary color, green takes the
-     secondary / negative role. A true bright red, not brick/orange. */
+  /* Primary UI accent is red (buttons, focus, active toggles, edit affordances). */
   --primary: #d81f1f;
   --primary-dark: #a81717;
   --primary-tint: #f7dede;
   --primary-border: #e6a5a5;
-  --pos: #d81f1f; /* positive figures */
-  --neg: #1e5b45; /* negative figures, delete, stale */
+
+  /* Meaning colors (conventional): green = good, red = bad. */
+  --pos: #1e5b45; /* profit, gains, rent paid, synced */
+  --pos-tint: #e4ede6;
+  --pos-border: #9dbcab;
+  --neg: #d81f1f; /* losses, rent due, delete, stale, sync error */
 
   /* Rounded corners (the source design was near-square at 2px). */
   --r-card: 14px;
@@ -286,16 +289,9 @@ button:focus-visible {
 }
 .property-card {
   background: var(--card);
-  border: 2px solid var(--rule);
+  border: 1px solid var(--rule);
   border-radius: var(--r-card);
   overflow: hidden;
-}
-/* border reflects this month's rent status */
-.property-card.rent-paid {
-  border-color: var(--neg); /* green token */
-}
-.property-card.rent-due {
-  border-color: var(--pos); /* red token */
 }
 .card-head {
   padding: 18px 18px 14px;
@@ -388,9 +384,9 @@ button:focus-visible {
   font-family: var(--sans);
 }
 .review-pill.is-reviewed {
-  background: var(--primary-tint);
-  border: 1px solid var(--primary-border);
-  color: var(--primary);
+  background: var(--pos-tint);
+  border: 1px solid var(--pos-border);
+  color: var(--pos);
 }
 
 /* ---- rent-status badge (top-right, next to the manager badge) ---- */
@@ -412,14 +408,14 @@ button:focus-visible {
   cursor: pointer;
 }
 .rent-badge.is-paid {
-  background: #e4ede6;
-  border-color: #9dbcab;
-  color: var(--neg); /* green token */
+  background: var(--pos-tint);
+  border-color: var(--pos-border);
+  color: var(--pos);
 }
 .rent-badge.is-due {
   background: none;
-  border-color: var(--pos); /* red token */
-  color: var(--pos);
+  border-color: var(--neg);
+  color: var(--neg);
 }
 
 /* ---- itemized ledger ---- */
@@ -818,12 +814,12 @@ button:focus-visible {
   white-space: nowrap;
 }
 .sync-chip.sync-synced {
-  color: var(--neg); /* green token */
-  border-color: var(--neg);
+  color: var(--pos);
+  border-color: var(--pos);
 }
 .sync-chip.sync-error {
-  color: var(--pos); /* red token */
-  border-color: var(--pos);
+  color: var(--neg);
+  border-color: var(--neg);
 }
 
 /* ---- card beds/baths line ---- */

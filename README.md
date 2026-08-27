@@ -7,8 +7,9 @@ net income per property and across the portfolio.
 UI implemented from the Claude Design canvas **The Ledger.dc.html** — a
 paper-ledger aesthetic (Libre Caslon Text / Courier Prime / IBM Plex Sans,
 double-rule borders, torn-paper edge on expanded ledgers, accounting-style
-negatives). Accent colors are swapped from the source: red is the primary
-color, green carries the secondary / negative role. Box corners are rounded.
+negatives). Red is the primary UI accent (buttons, focus, active toggles);
+meaning colors are conventional — green = profit / paid / good, red = loss /
+due / delete. Box corners are rounded.
 
 ## Stack
 
@@ -212,7 +213,7 @@ Property {
   updatedAt,        // timestamp; older than STALE_DAYS flags the card
   reviewedMonth,    // 'YYYY-MM' marked reviewed; a new month clears it and the
                     //   dashboard shows a "needs review" reminder bar
-  rentPaidMonth,    // 'YYYY-MM' rent marked paid (card border + badge), else null
+  rentPaidMonth,    // 'YYYY-MM' rent marked paid (✓/✕ badge on the card), else null
 
   purchasePrice,    // cost basis
   purchaseDate,     // 'YYYY-MM-DD'
