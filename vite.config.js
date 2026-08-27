@@ -34,6 +34,7 @@ function apiDevServer(env) {
     'ALLOWED_EMAIL',
     'TOTP_SECRET',
     'SESSION_SECRET',
+    'AUTH_DEV_PASSWORD',
   ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k];
   }

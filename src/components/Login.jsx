@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { passwordSignIn, verifyCode } from '../lib/auth.js';
+import { passwordSignIn, verifyCode, verifyDev } from '../lib/auth.js';
 
-export default function Login({ onDone }) {
+export default function Login({ mode, onDone }) {
+  const dev = mode === 'dev';
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,10 +11,15 @@ export default function Login({ onDone }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const doPassword = async (e) => {
+  const doStep1 = async (e) => {
     e.preventDefault();
-    setBusy(true);
     setError('');
+    if (dev) {
+      // password is checked together with the code in step 2
+      setStep(2);
+      return;
+    }
+    setBusy(true);
     try {
       setIdToken(await passwordSignIn(email, password));
       setStep(2);
@@ -27,15 +33,17 @@ export default function Login({ onDone }) {
     }
   };
 
-  const doCode = async (e) => {
+  const doStep2 = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await verifyCode(idToken, code);
+      if (dev) await verifyDev(password, code);
+      else await verifyCode(idToken, code);
       onDone();
     } catch (err) {
       setError(err.message || 'Invalid code.');
+      if (dev && /password/i.test(err.message || '')) setStep(1);
     } finally {
       setBusy(false);
     }
@@ -43,26 +51,29 @@ export default function Login({ onDone }) {
 
   return (
     <div className="login">
-      <form className="login-card" onSubmit={step === 1 ? doPassword : doCode}>
+      <form className="login-card" onSubmit={step === 1 ? doStep1 : doStep2}>
         <div className="login-title">The Ledger</div>
 
         {step === 1 ? (
           <>
-            <div className="login-sub">Sign in</div>
-            <input
-              type="email"
-              autoComplete="username"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-            />
+            <div className="login-sub">{dev ? 'Local sign-in' : 'Sign in'}</div>
+            {!dev && (
+              <input
+                type="email"
+                autoComplete="username"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+              />
+            )}
             <input
               type="password"
               autoComplete="current-password"
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoFocus={dev}
             />
           </>
         ) : (

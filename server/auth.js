@@ -1,13 +1,15 @@
-// Auth for the whole app: Firebase email/password (first factor) + an
-// authenticator-app TOTP code (second factor), then a signed session token the
-// client sends on every /api/* call.
+// Auth for the whole app: first factor + an authenticator-app TOTP code (second
+// factor), then a signed session token the client sends on every /api/* call.
 //
-// Turned ON only when all four server vars are set; otherwise every request is
-// allowed (local dev / an intentionally open deploy):
-//   FIREBASE_PROJECT_ID  — same value as VITE_FIREBASE_PROJECT_ID
-//   ALLOWED_EMAIL        — the single account permitted in
-//   TOTP_SECRET          — from `npm run totp:setup`
-//   SESSION_SECRET       — any long random string (signs session tokens)
+// Two modes, picked by which vars are set (else auth is OFF — every request
+// allowed, for local dev / an intentionally open deploy):
+//
+//   'firebase' (production): FIREBASE_PROJECT_ID + ALLOWED_EMAIL + TOTP_SECRET
+//     + SESSION_SECRET. First factor is Firebase email/password.
+//
+//   'dev' (local testing only): AUTH_DEV_PASSWORD + TOTP_SECRET + SESSION_SECRET.
+//     First factor is a plain password — no Firebase project needed. Never set
+//     AUTH_DEV_PASSWORD in production.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -20,17 +22,29 @@ const JWKS = createRemoteJWKSet(
 );
 
 const SESSION_TTL_MS = 30 * 864e5; // 30 days
+const DEV_EMAIL = '__dev__';
+
+/** @returns {'firebase' | 'dev' | null} */
+export function authMode() {
+  const hasTotp = process.env.TOTP_SECRET && process.env.SESSION_SECRET;
+  if (hasTotp && process.env.FIREBASE_PROJECT_ID && process.env.ALLOWED_EMAIL) {
+    return 'firebase';
+  }
+  if (hasTotp && process.env.AUTH_DEV_PASSWORD) return 'dev';
+  return null;
+}
 
 export function authConfigured() {
-  return Boolean(
-    process.env.FIREBASE_PROJECT_ID &&
-      process.env.ALLOWED_EMAIL &&
-      process.env.TOTP_SECRET &&
-      process.env.SESSION_SECRET
-  );
+  return authMode() !== null;
 }
 
 const allowedEmail = () => String(process.env.ALLOWED_EMAIL || '').toLowerCase();
+
+function eq(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+}
 
 async function verifyFirebaseIdToken(idToken) {
   const pid = process.env.FIREBASE_PROJECT_ID;
@@ -69,35 +83,50 @@ function readSession(token) {
 }
 
 export function authStatus() {
-  return { status: 200, body: { configured: authConfigured() } };
+  return { status: 200, body: { configured: authConfigured(), mode: authMode() } };
 }
 
-/** Exchange a Firebase ID token + TOTP code for a session token. */
-export async function authVerify({ idToken, code }) {
-  if (!authConfigured()) return { status: 200, body: { configured: false } };
+/**
+ * Exchange first-factor proof + TOTP code for a session token.
+ * firebase mode: { idToken, code }.  dev mode: { devPassword, code }.
+ */
+export async function authVerify({ idToken, code, devPassword }) {
+  const mode = authMode();
+  if (!mode) return { status: 200, body: { configured: false } };
 
-  let fb;
-  try {
-    fb = await verifyFirebaseIdToken(idToken);
-  } catch {
-    return { status: 401, body: { error: 'sign-in could not be verified' } };
+  let email;
+  if (mode === 'dev') {
+    if (!eq(devPassword, process.env.AUTH_DEV_PASSWORD)) {
+      return { status: 401, body: { error: 'wrong password' } };
+    }
+    email = DEV_EMAIL;
+  } else {
+    let fb;
+    try {
+      fb = await verifyFirebaseIdToken(idToken);
+    } catch {
+      return { status: 401, body: { error: 'sign-in could not be verified' } };
+    }
+    if (fb.email !== allowedEmail()) {
+      return { status: 403, body: { error: 'this account is not authorized' } };
+    }
+    email = fb.email;
   }
-  if (fb.email !== allowedEmail()) {
-    return { status: 403, body: { error: 'this account is not authorized' } };
-  }
+
   if (!verifyTotp(code, process.env.TOTP_SECRET)) {
     return { status: 401, body: { error: 'invalid authenticator code' } };
   }
 
-  const token = signSession({ email: fb.email, exp: Date.now() + SESSION_TTL_MS });
+  const token = signSession({ email, exp: Date.now() + SESSION_TTL_MS });
   return { status: 200, body: { token } };
 }
 
 /** Guard for the data routes. Returns true when the request may proceed. */
 export function requireSession(authorizationHeader) {
-  if (!authConfigured()) return true;
+  const mode = authMode();
+  if (!mode) return true;
   const token = String(authorizationHeader || '').replace(/^Bearer\s+/i, '');
   const claims = readSession(token);
   if (!claims || !claims.exp || claims.exp < Date.now()) return false;
-  return claims.email === allowedEmail();
+  return claims.email === (mode === 'dev' ? DEV_EMAIL : allowedEmail());
 }

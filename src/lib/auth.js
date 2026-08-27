@@ -26,14 +26,15 @@ export function logout() {
   setSession('');
 }
 
-/** Is the login gate active on this deployment? */
+/** @returns {Promise<{ configured: boolean, mode: 'firebase'|'dev'|null }>} */
 export async function authRequired() {
   try {
     const res = await fetch('/api/auth');
-    if (!res.ok) return false;
-    return Boolean((await res.json())?.configured);
+    if (!res.ok) return { configured: false, mode: null };
+    const d = await res.json();
+    return { configured: Boolean(d?.configured), mode: d?.mode || null };
   } catch {
-    return false;
+    return { configured: false, mode: null };
   }
 }
 
@@ -45,12 +46,11 @@ export async function passwordSignIn(email, password) {
   return cred.user.getIdToken();
 }
 
-/** Step 2 — exchange the ID token + TOTP code for a session token. */
-export async function verifyCode(idToken, code) {
+async function exchange(payload) {
   const res = await fetch('/api/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken, code }),
+    body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.token) {
@@ -58,6 +58,12 @@ export async function verifyCode(idToken, code) {
   }
   setSession(data.token);
 }
+
+/** Step 2, firebase mode — ID token + TOTP code → session token. */
+export const verifyCode = (idToken, code) => exchange({ idToken, code });
+
+/** Step 2, dev mode — password + TOTP code → session token. */
+export const verifyDev = (devPassword, code) => exchange({ devPassword, code });
 
 /** fetch() wrapper: attaches the session token; on 401 clears it and reloads. */
 export async function apiFetch(url, opts = {}) {
