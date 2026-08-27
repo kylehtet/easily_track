@@ -12,6 +12,7 @@ import { uid } from './lib/id.js';
 
 const currentYM = () => new Date().toISOString().slice(0, 7);
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const MONTH_KEY = 'the-ledger:lastmonth';
 
 /** Log a new value point when it differs from the last one; seed from purchase. */
 function withValueHistory(prev, fields) {
@@ -93,10 +94,13 @@ export default function App() {
   const [edit, setEdit] = useState({ key: null, val: '' });
   const [modal, setModal] = useState(null); // { id: string | null, form }
   const [sync, setSync] = useState(null); // null=local-only | 'syncing' | 'synced' | 'error'
+  const [booted, setBooted] = useState(false);
+  const [reminderOff, setReminderOff] = useState(false);
 
   const remoteOn = useRef(false);
   const skipEcho = useRef(false);
   const pushTimer = useRef(null);
+  const rolledRef = useRef(false);
 
   // Hydrate from the server store once, if one is configured.
   useEffect(() => {
@@ -104,6 +108,7 @@ export default function App() {
     loadRemote().then((r) => {
       if (!live) return;
       remoteOn.current = r.configured;
+      setBooted(true);
       if (!r.configured) return;
       if (r.properties) {
         skipEcho.current = true;
@@ -139,6 +144,37 @@ export default function App() {
   }, [list]);
 
   const mutate = (fn) => setList((cur) => fn(cur.slice()));
+
+  // Month rollover: once the real list is loaded, if the calendar month has
+  // changed since last visit, snapshot each property's net as last month's
+  // figure so the trend line compares against it. reviewedMonth / rentPaidMonth
+  // are month-keyed, so they lapse on their own.
+  useEffect(() => {
+    if (!booted || rolledRef.current) return;
+    rolledRef.current = true;
+    let last = null;
+    try {
+      last = localStorage.getItem(MONTH_KEY);
+    } catch {
+      /* ignore */
+    }
+    const cur = currentYM();
+    if (last && last !== cur) {
+      mutate((l) => l.map((p) => ({ ...p, prevNet: netIncome(p) })));
+    }
+    try {
+      localStorage.setItem(MONTH_KEY, cur);
+    } catch {
+      /* ignore */
+    }
+  }, [booted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const markAllReviewed = () => {
+    const ym = currentYM();
+    mutate((l) =>
+      l.map((p) => (p.reviewedMonth === ym ? p : { ...p, reviewedMonth: ym }))
+    );
+  };
 
   // ---- inline ledger editing --------------------------------------------------
   const startEdit = (key, cur) => setEdit({ key, val: String(cur) });
@@ -247,6 +283,9 @@ export default function App() {
     year: 'numeric',
   });
 
+  const needReview = list.filter((p) => p.reviewedMonth !== currentYM()).length;
+  const showReminder = booted && !reminderOff && needReview > 0;
+
   return (
     <div className="ledger-page">
       <div className="ledger-shell">
@@ -262,6 +301,23 @@ export default function App() {
           filter={filter}
           onFilter={setFilter}
         />
+
+        {showReminder && (
+          <div className="reminder-bar">
+            <span>
+              🗓 {monthLabel} — {needReview}{' '}
+              {needReview === 1 ? 'property needs' : 'properties need'} a review.
+              Update rent &amp; costs so net income stays current.
+            </span>
+            <span className="spacer" />
+            <button className="link-btn" onClick={markAllReviewed}>
+              Mark all reviewed
+            </button>
+            <button className="link-btn" onClick={() => setReminderOff(true)}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {isEmpty && (
           <div className="empty-state">

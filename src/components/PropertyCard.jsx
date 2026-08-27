@@ -53,12 +53,25 @@ export default function PropertyCard({
   const cap = capRate(p);
 
   return (
-    <div className="property-card">
+    <div className={`property-card ${rentPaid ? 'rent-paid' : 'rent-due'}`}>
       <div className="card-head" onClick={onToggle}>
         <div className="card-head-top">
           <div className="card-street">{p.street}</div>
-          <div className="card-badge">
-            {p.mgmt.type === 'ziprent' ? 'ZIPRENT' : 'SELF-MANAGED'}
+          <div className="card-badges">
+            <span className="card-badge">
+              {p.mgmt.type === 'ziprent' ? 'ZIPRENT' : 'SELF-MANAGED'}
+            </span>
+            <button
+              type="button"
+              className={`rent-badge ${rentPaid ? 'is-paid' : 'is-due'}`}
+              title="Click to toggle this month's rent"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRentPaid();
+              }}
+            >
+              {rentPaid ? 'RENT PAID' : 'RENT DUE'}
+            </button>
           </div>
         </div>
         <div className="card-cityzip">
@@ -102,16 +115,6 @@ export default function PropertyCard({
         )}
 
         <div className="card-meta">
-          <button
-            className={`rent-pill ${rentPaid ? 'is-paid' : 'is-due'}`}
-            title="Toggle this month's rent payment"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRentPaid();
-            }}
-          >
-            {rentPaid ? '✓ Rent paid' : 'Rent due'}
-          </button>
           <span className={`card-updated ${stale ? 'is-stale' : ''}`}>
             Updated {shortDate(p.updatedAt)}
           </span>

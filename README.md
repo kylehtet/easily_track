@@ -207,10 +207,12 @@ Property {
            feeMode: 'pct' | 'flat',
            feeVal,
            payment: 'Ziprent direct deposit' | 'Zelle' | 'PayPal' | 'Personal cash/check' },
-  prevNet,          // last month's net, for the trend line (null = first month)
+  prevNet,          // last month's net, for the trend line (null = first month);
+                    //   auto-snapshotted from current net on the first visit of a new month
   updatedAt,        // timestamp; older than STALE_DAYS flags the card
-  reviewedMonth,    // 'YYYY-MM' the card was marked reviewed, else null
-  rentPaidMonth,    // 'YYYY-MM' rent was marked paid (card pill toggle), else null
+  reviewedMonth,    // 'YYYY-MM' marked reviewed; a new month clears it and the
+                    //   dashboard shows a "needs review" reminder bar
+  rentPaidMonth,    // 'YYYY-MM' rent marked paid (card border + badge), else null
 
   purchasePrice,    // cost basis
   purchaseDate,     // 'YYYY-MM-DD'
