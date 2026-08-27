@@ -33,6 +33,7 @@ export default function PropertyCard({
   onEdit,
   onDelete,
   onReview,
+  onRentPaid,
   onStartEdit,
   onChangeEdit,
   onCommitEdit,
@@ -41,7 +42,9 @@ export default function PropertyCard({
   const net = netIncome(p);
   const neg = net < 0;
   const stale = (Date.now() - p.updatedAt) / 864e5 > STALE_DAYS;
-  const reviewed = p.reviewedMonth === new Date().toISOString().slice(0, 7);
+  const ym = new Date().toISOString().slice(0, 7);
+  const reviewed = p.reviewedMonth === ym;
+  const rentPaid = p.rentPaidMonth === ym;
   const t = trend(net, p.prevNet);
 
   const hasValue = num(p.value) > 0;
@@ -99,6 +102,16 @@ export default function PropertyCard({
         )}
 
         <div className="card-meta">
+          <button
+            className={`rent-pill ${rentPaid ? 'is-paid' : 'is-due'}`}
+            title="Toggle this month's rent payment"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRentPaid();
+            }}
+          >
+            {rentPaid ? '✓ Rent paid' : 'Rent due'}
+          </button>
           <span className={`card-updated ${stale ? 'is-stale' : ''}`}>
             Updated {shortDate(p.updatedAt)}
           </span>

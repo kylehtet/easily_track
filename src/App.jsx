@@ -189,6 +189,15 @@ export default function App() {
     );
   };
 
+  const toggleRentPaid = (p) => {
+    const ym = currentYM();
+    mutate((l) =>
+      l.map((q) =>
+        q.id === p.id ? { ...q, rentPaidMonth: q.rentPaidMonth === ym ? null : ym } : q
+      )
+    );
+  };
+
   // ---- modal --------------------------------------------------------------
   const openAdd = () => setModal({ id: null, form: emptyForm() });
   const openEdit = (p) => setModal({ id: p.id, form: formFrom(p) });
@@ -209,6 +218,7 @@ export default function App() {
         id: uid(),
         prevNet: null,
         reviewedMonth: null,
+        rentPaidMonth: null,
         valueHistory: withValueHistory(null, fields),
       };
       mutate((l) => l.concat([created]));
@@ -282,6 +292,7 @@ export default function App() {
                 onEdit={() => openEdit(p)}
                 onDelete={() => removeProperty(p)}
                 onReview={() => toggleReviewed(p)}
+                onRentPaid={() => toggleRentPaid(p)}
                 onStartEdit={startEdit}
                 onChangeEdit={changeEdit}
                 onCommitEdit={commitEdit}

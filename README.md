@@ -210,6 +210,7 @@ Property {
   prevNet,          // last month's net, for the trend line (null = first month)
   updatedAt,        // timestamp; older than STALE_DAYS flags the card
   reviewedMonth,    // 'YYYY-MM' the card was marked reviewed, else null
+  rentPaidMonth,    // 'YYYY-MM' rent was marked paid (card pill toggle), else null
 
   purchasePrice,    // cost basis
   purchaseDate,     // 'YYYY-MM-DD'

@@ -368,6 +368,26 @@ button:focus-visible {
   color: var(--primary);
 }
 
+/* ---- rent-paid toggle pill ---- */
+.rent-pill {
+  padding: 2px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  font-family: var(--sans);
+  cursor: pointer;
+}
+.rent-pill.is-paid {
+  /* --neg is the green token in this swapped palette */
+  background: #e4ede6;
+  border: 1px solid #9dbcab;
+  color: var(--neg);
+}
+.rent-pill.is-due {
+  background: none;
+  border: 1px solid var(--pos); /* red token */
+  color: var(--pos);
+}
+
 /* ---- itemized ledger ---- */
 .card-ledger-wrap {
   padding: 0 14px 14px;
