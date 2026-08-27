@@ -19,7 +19,14 @@ function readBody(req) {
  * name and never reach the client bundle.
  */
 function apiDevServer(env) {
-  for (const k of ['RENTCAST_API_KEY', 'ANTHROPIC_API_KEY', 'LISTING_MODEL']) {
+  for (const k of [
+    'RENTCAST_API_KEY',
+    'ANTHROPIC_API_KEY',
+    'LISTING_MODEL',
+    'RAPIDAPI_KEY',
+    'RAPIDAPI_ZILLOW_HOST',
+    'CENSUS_API_KEY',
+  ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k];
   }
   return {

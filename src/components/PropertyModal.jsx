@@ -57,7 +57,12 @@ function normalize(f) {
 
 export default function PropertyModal({ mode, initialForm, onCancel, onSave }) {
   const [f, setF] = useState(initialForm);
-  const [caps, setCaps] = useState({ rentcast: false, listing: false });
+  const [caps, setCaps] = useState({
+    propertyLookup: false,
+    rentcast: false,
+    rapidapi: false,
+    listing: false,
+  });
   const [lookup, setLookup] = useState({ loading: false, error: '', note: '' });
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
@@ -139,9 +144,11 @@ export default function PropertyModal({ mode, initialForm, onCancel, onSave }) {
     const m = metaFrom(d);
     if (m) setF((cur) => ({ ...cur, meta: m }));
 
+    const tag = (label, src) =>
+      label + (src && src !== 'AVM' && src !== 'Zillow' ? ` (${src})` : '');
     const bits = [
-      d.value && 'value',
-      d.rentEstimate && 'rent',
+      d.value && tag('value', d.valueSource),
+      d.rentEstimate && tag('rent', d.rentSource),
       d.lastSalePrice && 'last sale',
       d.taxAnnual && 'tax',
       m && 'beds/baths',
@@ -178,7 +185,7 @@ export default function PropertyModal({ mode, initialForm, onCancel, onSave }) {
 
   // Fires once per distinct address as soon as one is entered/picked.
   const maybeAutoLookup = (addr) => {
-    if (!caps.rentcast) return;
+    if (!caps.propertyLookup) return;
     if (!addr.street || !(addr.zip || addr.city)) return;
     if (mode === 'edit' && num(f.value) > 0) return; // already has value
     const key = addrKey(addr);
@@ -364,7 +371,7 @@ export default function PropertyModal({ mode, initialForm, onCancel, onSave }) {
           </label>
         </div>
 
-        {caps.rentcast && (
+        {caps.propertyLookup && (
           <div className="lookup-row">
             {lookup.loading && (
               <span className="est-note">Fetching property data…</span>

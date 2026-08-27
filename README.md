@@ -109,8 +109,19 @@ with no setup; two need an API key.
 |---|---|---|
 | **Mortgage calculator** | monthly mortgage (P&I) from price / down % / rate / term | nothing |
 | **Estimate taxes & insurance** | property tax (`price × state effective rate`), insurance (`value × 0.35%/yr`) | nothing |
-| **Address lookup** (Rentcast) | value, rent estimate, last sale, tax, beds/baths/sqft — **fires automatically** when you enter/pick an address | `RENTCAST_API_KEY` |
+| **Address lookup** | value, rent estimate, last sale, tax, beds/baths/sqft — **fires automatically** when you enter/pick an address | `RENTCAST_API_KEY` (at least) |
 | **Paste a listing** | price, rent, tax, HOA, beds/baths from listing text — regex first, Claude only for gaps | `ANTHROPIC_API_KEY` |
+
+The address lookup chains sources and merges whatever each one has, tagging the
+value/rent field with where it came from (`AVM`, `Zillow`, `assessed`, `area
+median`):
+
+1. **Rentcast** — AVM value + rent, plus the property record (beds/baths/sqft/
+   last sale/tax). Its tax **assessment** is used as a value proxy if the AVM misses.
+2. **RapidAPI Zillow** *(optional, `RAPIDAPI_KEY` + `RAPIDAPI_ZILLOW_HOST`)* —
+   backfills value / rent / beds when Rentcast comes up short.
+3. **US Census ACS area medians** *(optional, free `CENSUS_API_KEY`)* — last-resort
+   ballpark for value / rent, clearly tagged "area median".
 
 The mortgage and estimate figures are client-side math (`src/lib/mortgage.js`,
 `src/lib/estimates.js`) — always available. Tax rates are rough state averages;
