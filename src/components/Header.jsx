@@ -1,10 +1,12 @@
+import AccountMenu from './AccountMenu.jsx';
+
 const SYNC_LABEL = {
   syncing: 'saving…',
   synced: 'synced',
   error: 'sync failed',
 };
 
-export default function Header({ monthLabel, onAdd, sync }) {
+export default function Header({ monthLabel, onAdd, sync, showAccount }) {
   return (
     <header className="ledger-header">
       <div>
@@ -16,9 +18,12 @@ export default function Header({ monthLabel, onAdd, sync }) {
           )}
         </div>
       </div>
-      <button className="btn-primary" onClick={onAdd}>
-        + Add property
-      </button>
+      <div className="ledger-header-actions">
+        {showAccount && <AccountMenu />}
+        <button className="btn-primary" onClick={onAdd}>
+          + Add property
+        </button>
+      </div>
     </header>
   );
 }

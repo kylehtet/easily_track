@@ -21,5 +21,5 @@ export default function Root() {
   if (phase === 'locked') {
     return <Login mode={mode} onDone={() => setPhase('open')} />;
   }
-  return <App />;
+  return <App authMode={mode} />;
 }

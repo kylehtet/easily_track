@@ -87,7 +87,7 @@ function formFrom(p) {
   };
 }
 
-export default function App() {
+export default function App({ authMode } = {}) {
   const [list, setList] = useState(() => loadList() ?? seedProperties());
   const [expanded, setExpanded] = useState(null);
   const [sortBy, setSortBy] = useState('net');
@@ -339,6 +339,7 @@ export default function App() {
           monthLabel={monthLabel.toLowerCase()}
           onAdd={openAdd}
           sync={sync}
+          showAccount={authMode === 'firebase'}
         />
         <SummaryBar list={list} />
         <SortFilterBar

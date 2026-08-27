@@ -141,18 +141,111 @@ button:focus-visible {
   font-size: 15px;
   border-radius: var(--r-input);
 }
-.login-code {
-  font-family: var(--mono);
-  letter-spacing: 6px;
-  text-align: center;
-  font-size: 20px;
-}
 .login-error {
   color: var(--neg);
   font-size: 12.5px;
 }
+.login-note {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
 .login-card .btn-primary {
   margin-top: 4px;
+}
+.login-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.pw-field {
+  position: relative;
+  display: flex;
+}
+.pw-field input {
+  flex: 1;
+  padding-right: 52px;
+}
+.pw-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 6px;
+}
+
+/* ---- header account menu ---- */
+.ledger-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.account {
+  position: relative;
+}
+.account-btn {
+  background: none;
+  border: 1px solid var(--dash);
+  color: var(--ink-soft);
+  padding: 9px 12px;
+  border-radius: var(--r-btn);
+  font-size: 12.5px;
+}
+.account-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-inner);
+  box-shadow: 0 10px 28px rgba(35, 30, 18, 0.18);
+  padding: 10px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-panel .link-btn {
+  text-align: left;
+  padding: 4px 2px;
+  font-size: 13px;
+}
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-form input {
+  border: 1px solid var(--rule-2);
+  background: var(--ledger);
+  color: var(--ink);
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: var(--r-input);
+}
+.account-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.account-actions .btn-primary {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.account-msg {
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 /* ---- header ---- */

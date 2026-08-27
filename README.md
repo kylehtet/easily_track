@@ -220,29 +220,27 @@ Single-user, last-write-wins. Code: `server/dataStore.js`, `src/lib/remoteStore.
 
 ## Access (login gate)
 
-Optional. Set to run it as a private site for one client — a login page plus a
-second factor, and every `/api/*` route rejects requests without a session.
+Optional. Set to run it as a private site for one client. Every `/api/*` route
+rejects requests without a session.
 
-- **First factor:** Firebase email/password (free Spark plan — no Identity
-  Platform / billing). You create the one account in the Firebase console
-  (Authentication → Users → Add user). There is no sign-up page.
-- **Second factor:** an authenticator-app code (TOTP, RFC 6238, `server/totp.js`
-  — no SMS, no third party).
-- After both, the server issues a 30-day signed session token
-  (`SESSION_SECRET`, HMAC). `ALLOWED_EMAIL` is a hard allowlist — even a valid
+- **Firebase email/password** (free Spark plan — no Identity Platform / billing).
+  The login page also has **sign-up**, **forgot password**, and a show/hide
+  password toggle; an in-app **Account** menu has change-password + sign out.
+- **Setup = email verification.** Sign-up sends a Firebase verification link;
+  until it's clicked, that account can't get a session. No authenticator app,
+  no 2FA at login.
+- On a verified sign-in the server issues a 30-day signed session token
+  (`SESSION_SECRET`, HMAC). `ALLOWED_EMAIL` is a hard allowlist — a valid
   Firebase account that isn't that address is refused.
 
-Turn it on by setting **all** of `FIREBASE_PROJECT_ID`, `ALLOWED_EMAIL`,
-`TOTP_SECRET`, `SESSION_SECRET` (server) plus the `VITE_FIREBASE_*` client
-config. Leave them unset for an open build (local dev). See `DEPLOY.md` for the
-step-by-step and `.env.example` for every var.
+Turn it on with `FIREBASE_PROJECT_ID` + `ALLOWED_EMAIL` + `SESSION_SECRET`
+(server) plus the `VITE_FIREBASE_*` client config. Unset → open build (local
+dev). `AUTH_DEV_PASSWORD` + `SESSION_SECRET` (no Firebase) gives a local
+password-only gate for testing the flow. See `DEPLOY.md` and `.env.example`.
 
-```bash
-npm run totp:setup -- client@example.com   # prints TOTP_SECRET + an otpauth:// URL
-```
-
-Code: `src/Root.jsx` (gate), `src/components/Login.jsx`, `src/lib/auth.js`,
-`src/lib/firebase.js` (lazy-loaded), `server/auth.js`, `api/auth.js`.
+Code: `src/Root.jsx` (gate), `src/components/Login.jsx`,
+`src/components/AccountMenu.jsx`, `src/lib/auth.js`, `src/lib/firebase.js`
+(lazy-loaded), `server/auth.js`, `api/auth.js`.
 
 ## Data model
 

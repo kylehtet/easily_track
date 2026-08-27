@@ -1,7 +1,8 @@
-// Client auth: step 1 Firebase email/password, step 2 an authenticator-app
-// code, then a session token that every /api/* call carries.
+// Client auth. Firebase email/password (production) or a dev password (local),
+// then a session token every /api/* call carries. Email verification is the
+// only setup step — no authenticator app.
 
-import { getFirebaseAuth } from './firebase.js';
+import { getFirebaseAuth, getCurrentUser } from './firebase.js';
 
 const TOKEN_KEY = 'the-ledger:session';
 
@@ -38,14 +39,6 @@ export async function authRequired() {
   }
 }
 
-/** Step 1 — returns a fresh Firebase ID token, or throws (err.code set). */
-export async function passwordSignIn(email, password) {
-  const auth = await getFirebaseAuth();
-  const { signInWithEmailAndPassword } = await import('firebase/auth');
-  const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-  return cred.user.getIdToken();
-}
-
 async function exchange(payload) {
   const res = await fetch('/api/auth', {
     method: 'POST',
@@ -54,18 +47,109 @@ async function exchange(payload) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.token) {
-    throw new Error(data?.error || 'Verification failed.');
+    throw new Error(data?.error || 'Sign-in failed.');
   }
   setSession(data.token);
 }
 
-/** Step 2, firebase mode — ID token + TOTP code → session token. */
-export const verifyCode = (idToken, code) => exchange({ idToken, code });
+const friendly = (err) => {
+  const c = err?.code || '';
+  if (/wrong-password|user-not-found|invalid-credential|invalid-email/.test(c))
+    return 'Wrong email or password.';
+  if (/email-already-in-use/.test(c)) return 'That email already has an account — sign in.';
+  if (/weak-password/.test(c)) return 'Password is too weak (use 6+ characters).';
+  if (/too-many-requests/.test(c)) return 'Too many attempts — wait a bit and retry.';
+  return err?.message || 'Something went wrong.';
+};
 
-/** Step 2, dev mode — password + TOTP code → session token. */
-export const verifyDev = (devPassword, code) => exchange({ devPassword, code });
+// ---- firebase mode ----------------------------------------------------
 
-/** fetch() wrapper: attaches the session token; on 401 clears it and reloads. */
+export async function signIn(email, password) {
+  const auth = await getFirebaseAuth();
+  const { signInWithEmailAndPassword } = await import('firebase/auth');
+  let cred;
+  try {
+    cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+  if (!cred.user.emailVerified) {
+    const err = new Error('Verify your email first — check your inbox.');
+    err.needsVerification = true;
+    throw err;
+  }
+  await exchange({ idToken: await cred.user.getIdToken() });
+}
+
+export async function signUp(email, password) {
+  const auth = await getFirebaseAuth();
+  const { createUserWithEmailAndPassword, sendEmailVerification } = await import(
+    'firebase/auth'
+  );
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    await sendEmailVerification(cred.user);
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+}
+
+export async function resendVerification(email, password) {
+  const auth = await getFirebaseAuth();
+  const { signInWithEmailAndPassword, sendEmailVerification } = await import(
+    'firebase/auth'
+  );
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+    await sendEmailVerification(cred.user);
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+}
+
+export async function resetPassword(email) {
+  const auth = await getFirebaseAuth();
+  const { sendPasswordResetEmail } = await import('firebase/auth');
+  try {
+    await sendPasswordResetEmail(auth, email.trim());
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+}
+
+export async function changePassword(currentPassword, newPassword) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('You are not signed in.');
+  const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } =
+    await import('firebase/auth');
+  try {
+    await reauthenticateWithCredential(
+      user,
+      EmailAuthProvider.credential(user.email, currentPassword)
+    );
+    await updatePassword(user, newPassword);
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+}
+
+export async function firebaseSignOut() {
+  try {
+    const auth = await getFirebaseAuth();
+    const { signOut } = await import('firebase/auth');
+    await signOut(auth);
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---- dev mode -------------------------------------------------------
+
+export const devSignIn = (devPassword) => exchange({ devPassword });
+
+// ---- fetch wrapper --------------------------------------------------
+
+/** fetch() that attaches the session token; on 401 clears it and reloads. */
 export async function apiFetch(url, opts = {}) {
   const token = sessionToken();
   const headers = { ...(opts.headers || {}) };

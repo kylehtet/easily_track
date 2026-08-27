@@ -32,7 +32,6 @@ function apiDevServer(env) {
     'DATA_FILE',
     'FIREBASE_PROJECT_ID',
     'ALLOWED_EMAIL',
-    'TOTP_SECRET',
     'SESSION_SECRET',
     'AUTH_DEV_PASSWORD',
   ]) {
@@ -42,7 +41,12 @@ function apiDevServer(env) {
     name: 'ledger-api-dev',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const url = new URL(req.url, 'http://localhost');
+        let url;
+        try {
+          url = new URL(req.url, 'http://localhost');
+        } catch {
+          return next();
+        }
         if (!url.pathname.startsWith('/api/')) return next();
 
         const send = (status, body) => {

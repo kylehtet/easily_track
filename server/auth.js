@@ -1,19 +1,18 @@
-// Auth for the whole app: first factor + an authenticator-app TOTP code (second
-// factor), then a signed session token the client sends on every /api/* call.
+// Auth for the whole app, then a signed session token the client sends on
+// every /api/* call.
 //
 // Two modes, picked by which vars are set (else auth is OFF — every request
 // allowed, for local dev / an intentionally open deploy):
 //
-//   'firebase' (production): FIREBASE_PROJECT_ID + ALLOWED_EMAIL + TOTP_SECRET
-//     + SESSION_SECRET. First factor is Firebase email/password.
+//   'firebase' (production): FIREBASE_PROJECT_ID + ALLOWED_EMAIL + SESSION_SECRET.
+//     Login = Firebase email/password. The email must be verified (Firebase
+//     sends the link at sign-up) and must equal ALLOWED_EMAIL. No 2FA at login.
 //
-//   'dev' (local testing only): AUTH_DEV_PASSWORD + TOTP_SECRET + SESSION_SECRET.
-//     First factor is a plain password — no Firebase project needed. Never set
-//     AUTH_DEV_PASSWORD in production.
+//   'dev' (local testing only): AUTH_DEV_PASSWORD + SESSION_SECRET. Login is
+//     that plain password. Never set AUTH_DEV_PASSWORD in production.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { verifyTotp } from './totp.js';
 
 const JWKS = createRemoteJWKSet(
   new URL(
@@ -26,11 +25,9 @@ const DEV_EMAIL = '__dev__';
 
 /** @returns {'firebase' | 'dev' | null} */
 export function authMode() {
-  const hasTotp = process.env.TOTP_SECRET && process.env.SESSION_SECRET;
-  if (hasTotp && process.env.FIREBASE_PROJECT_ID && process.env.ALLOWED_EMAIL) {
-    return 'firebase';
-  }
-  if (hasTotp && process.env.AUTH_DEV_PASSWORD) return 'dev';
+  if (!process.env.SESSION_SECRET) return null;
+  if (process.env.FIREBASE_PROJECT_ID && process.env.ALLOWED_EMAIL) return 'firebase';
+  if (process.env.AUTH_DEV_PASSWORD) return 'dev';
   return null;
 }
 
@@ -52,7 +49,10 @@ async function verifyFirebaseIdToken(idToken) {
     issuer: `https://securetoken.google.com/${pid}`,
     audience: pid,
   });
-  return { email: String(payload.email || '').toLowerCase(), uid: payload.sub };
+  return {
+    email: String(payload.email || '').toLowerCase(),
+    emailVerified: payload.email_verified === true,
+  };
 }
 
 function signSession(claims) {
@@ -87,10 +87,11 @@ export function authStatus() {
 }
 
 /**
- * Exchange first-factor proof + TOTP code for a session token.
- * firebase mode: { idToken, code }.  dev mode: { devPassword, code }.
+ * Turn first-factor proof into a session token.
+ *   dev mode:      { devPassword }
+ *   firebase mode: { idToken }  (email must be verified + == ALLOWED_EMAIL)
  */
-export async function authVerify({ idToken, code, devPassword }) {
+export async function authVerify({ idToken, devPassword }) {
   const mode = authMode();
   if (!mode) return { status: 200, body: { configured: false } };
 
@@ -110,11 +111,13 @@ export async function authVerify({ idToken, code, devPassword }) {
     if (fb.email !== allowedEmail()) {
       return { status: 403, body: { error: 'this account is not authorized' } };
     }
+    if (!fb.emailVerified) {
+      return {
+        status: 403,
+        body: { error: 'verify your email first — check your inbox for the link' },
+      };
+    }
     email = fb.email;
-  }
-
-  if (!verifyTotp(code, process.env.TOTP_SECRET)) {
-    return { status: 401, body: { error: 'invalid authenticator code' } };
   }
 
   const token = signSession({ email, exp: Date.now() + SESSION_TTL_MS });

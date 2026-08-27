@@ -1,7 +1,8 @@
-// Firebase is loaded lazily — only when someone actually reaches the login
-// screen — so the ~90KB SDK stays out of the main bundle for the common case
-// (an already-authenticated client). The web config is safe to expose; real
-// enforcement is the ID-token check + one-email allowlist in server/auth.js.
+// Firebase is loaded lazily — only when someone reaches the login screen or
+// opens the account menu — so the ~90KB SDK stays out of the main bundle for
+// the common case (an already-authenticated client). The web config is safe to
+// expose; real enforcement is the verified-email + one-email allowlist check in
+// server/auth.js.
 
 export const firebaseConfigured = Boolean(
   import.meta.env.VITE_FIREBASE_API_KEY &&
@@ -31,4 +32,17 @@ export function getFirebaseAuth() {
     );
   }
   return authPromise;
+}
+
+/** Resolves the signed-in Firebase user (waits out the initial auth-state load). */
+export async function getCurrentUser() {
+  const auth = await getFirebaseAuth();
+  if (auth.currentUser) return auth.currentUser;
+  const { onAuthStateChanged } = await import('firebase/auth');
+  return new Promise((resolve) => {
+    const stop = onAuthStateChanged(auth, (user) => {
+      stop();
+      resolve(user);
+    });
+  });
 }

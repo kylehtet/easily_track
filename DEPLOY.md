@@ -25,45 +25,38 @@ Project → **Settings → Environment Variables**:
 | `ANTHROPIC_API_KEY` | from console.anthropic.com |
 | `LISTING_MODEL` | `claude-haiku-4-5` (cheap) |
 
-## 4. Login gate (Firebase email/password + authenticator 2FA)
+## 4. Login gate (Firebase email/password, email-verified)
 
 ### 4a. Firebase project
 
-1. console.firebase.google.com → **Add project** (Spark / free plan is fine —
-   do **not** need Identity Platform).
+1. console.firebase.google.com → **Add project** (Spark / free plan — no Identity
+   Platform needed).
 2. **Authentication → Get started → Sign-in method → Email/Password → Enable.**
-3. **Authentication → Users → Add user** — the client's email + a strong
-   password. (This is the only account; there is no sign-up page.)
-4. **Project settings → General → Your apps → Web app (`</>`)** — register one.
-   Copy the config values.
-5. **Authentication → Settings → Authorized domains** — add your Vercel domain
+3. **Project settings → General → Your apps → Web app (`</>`)** — register one,
+   copy the config values.
+4. **Authentication → Settings → Authorized domains** — add your Vercel domain
    (e.g. `easily-track.vercel.app` and any custom domain).
 
-### 4b. Generate the TOTP secret
+The client creates their own account from the app's **sign-up** page; Firebase
+emails a verification link they must click before they can sign in. (Or you
+pre-create it: Authentication → Users → Add user, then have them use
+"Forgot password" once — but they'd still need to verify the email.)
 
-```bash
-npm run totp:setup -- client@example.com
-```
-
-Copy the `TOTP_SECRET`, and add the `otpauth://` URL to the client's
-authenticator app (Google Authenticator / Authy / 1Password — paste the URL or
-turn it into a QR for them to scan).
-
-### 4c. Environment variables (Vercel → Settings → Environment Variables)
+### 4b. Environment variables (Vercel → Settings → Environment Variables)
 
 | Var | Value |
 |---|---|
-| `VITE_FIREBASE_API_KEY` | from 4a step 4 |
+| `VITE_FIREBASE_API_KEY` | from 4a step 3 |
 | `VITE_FIREBASE_AUTH_DOMAIN` | `<project>.firebaseapp.com` |
 | `VITE_FIREBASE_PROJECT_ID` | `<project-id>` |
-| `VITE_FIREBASE_APP_ID` | from 4a step 4 |
+| `VITE_FIREBASE_APP_ID` | from 4a step 3 |
 | `FIREBASE_PROJECT_ID` | same as `VITE_FIREBASE_PROJECT_ID` |
-| `ALLOWED_EMAIL` | the client's email, lowercase |
-| `TOTP_SECRET` | from 4b |
+| `ALLOWED_EMAIL` | the client's email, lowercase — hard allowlist |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
 
-Redeploy. Visiting the site now shows the login page; after email/password +
-the 6-digit code the client is in for 30 days per device.
+Redeploy. The site now opens to the login page: sign up → click the email link
+→ sign in. Good for 30 days per browser. In-app **Account** menu has change
+password + sign out; the login page has forgot-password.
 
 To lock everyone out (rotate access): change `SESSION_SECRET` and redeploy —
 every existing session token stops validating.
@@ -71,5 +64,15 @@ every existing session token stops validating.
 ## Local development
 
 With none of the auth vars set, there's no login gate and `/api/*` is open —
-convenient for `npm run dev`. Put real values in a local `.env` (git-ignored)
-to exercise the gate.
+convenient for `npm run dev`.
+
+To see the login page locally without a Firebase project, put this in `.env`
+(git-ignored) and restart:
+
+```
+AUTH_DEV_PASSWORD=letmein
+SESSION_SECRET=any-long-random-string
+```
+
+That gives a password-only gate (`mode: "dev"`). Use the real `FIREBASE_*` +
+`ALLOWED_EMAIL` + `SESSION_SECRET` values to exercise the full Firebase flow.
