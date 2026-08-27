@@ -135,7 +135,8 @@ export default function PropertyModal({ mode, initialForm, onCancel, onSave }) {
 
   const applyLookup = (d, viaCache) => {
     fillBlanks({
-      value: d.value ?? d.lastSalePrice ?? '',
+      // current value only from a real estimate — never a stale sale price
+      value: d.value ?? '',
       purchasePrice: d.lastSalePrice ?? '',
       purchaseDate: d.lastSaleDate ?? '',
       rent: d.rentEstimate ?? '',

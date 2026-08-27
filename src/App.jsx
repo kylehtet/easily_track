@@ -7,6 +7,7 @@ import PropertyModal from './components/PropertyModal.jsx';
 import { BASE_COSTS, netIncome, num, appreciationPct } from './lib/calculations.js';
 import { loadList, saveList } from './lib/storage.js';
 import { loadRemote, saveRemote } from './lib/remoteStore.js';
+import { getCapabilities, lookupProperty } from './lib/realEstateData.js';
 import { seedProperties } from './data/sampleProperties.js';
 import { uid } from './lib/id.js';
 
@@ -145,10 +146,53 @@ export default function App() {
 
   const mutate = (fn) => setList((cur) => fn(cur.slice()));
 
+  // Re-fetch each property's current value from a fresh AVM. Value-only lookup
+  // (1 API call each), best effort, gentle pacing. Appends a valueHistory point
+  // when the number moves.
+  const refreshValues = async (props) => {
+    let caps;
+    try {
+      caps = await getCapabilities();
+    } catch {
+      return;
+    }
+    if (!caps.propertyLookup) return;
+
+    for (const p of props) {
+      if (!p.street || !(p.zip || p.city)) continue;
+      try {
+        const d = await lookupProperty(
+          { street: p.street, city: p.city, state: p.state, zip: p.zip },
+          { fields: 'value' }
+        );
+        const v = Number(d?.value);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        mutate((l) =>
+          l.map((q) => {
+            if (q.id !== p.id) return q;
+            const hist = Array.isArray(q.valueHistory) ? q.valueHistory : [];
+            const lastPt = hist[hist.length - 1];
+            const changed = !lastPt || Number(lastPt.value) !== v;
+            return {
+              ...q,
+              value: v,
+              valueHistory: changed
+                ? hist.concat([{ date: todayISO(), value: v }])
+                : hist,
+            };
+          })
+        );
+      } catch {
+        /* address not covered / API error — leave this property as-is */
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+
   // Month rollover: once the real list is loaded, if the calendar month has
-  // changed since last visit, snapshot each property's net as last month's
-  // figure so the trend line compares against it. reviewedMonth / rentPaidMonth
-  // are month-keyed, so they lapse on their own.
+  // changed since last visit — snapshot each property's net into prevNet so the
+  // trend compares against last month, and re-fetch current values. reviewedMonth
+  // / rentPaidMonth are month-keyed, so they lapse on their own.
   useEffect(() => {
     if (!booted || rolledRef.current) return;
     rolledRef.current = true;
@@ -159,14 +203,16 @@ export default function App() {
       /* ignore */
     }
     const cur = currentYM();
-    if (last && last !== cur) {
-      mutate((l) => l.map((p) => ({ ...p, prevNet: netIncome(p) })));
-    }
+    const isNewMonth = Boolean(last) && last !== cur;
     try {
       localStorage.setItem(MONTH_KEY, cur);
     } catch {
       /* ignore */
     }
+    if (!isNewMonth) return;
+
+    mutate((l) => l.map((p) => ({ ...p, prevNet: netIncome(p) })));
+    refreshValues(list);
   }, [booted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markAllReviewed = () => {

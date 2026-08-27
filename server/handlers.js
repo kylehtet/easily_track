@@ -68,16 +68,16 @@ async function rentcastGet(path, address, key) {
   return res.json();
 }
 
-async function fromRentcast(full, wantEstimates) {
+async function fromRentcast(full, want) {
   const key = process.env.RENTCAST_API_KEY;
   if (!key) return null;
 
   const [value, rent, record] = await Promise.all([
-    wantEstimates ? settle(rentcastGet('/avm/value', full, key)) : Promise.resolve(null),
-    wantEstimates
+    want.value ? settle(rentcastGet('/avm/value', full, key)) : Promise.resolve(null),
+    want.rent
       ? settle(rentcastGet('/avm/rent/long-term', full, key))
       : Promise.resolve(null),
-    settle(rentcastGet('/properties', full, key)),
+    want.record ? settle(rentcastGet('/properties', full, key)) : Promise.resolve(null),
   ]);
 
   const rec = Array.isArray(record) ? record[0] : record;
@@ -94,8 +94,7 @@ async function fromRentcast(full, wantEstimates) {
     valueRange: value
       ? { low: value.priceRangeLow ?? null, high: value.priceRangeHigh ?? null }
       : null,
-    // an assessment isn't market value but it's a usable floor when the AVM misses
-    assessedValue: posNum(latestAssess?.value),
+    assessedValue: posNum(latestAssess?.value), // informational; not used as "value"
     rentEstimate: posNum(rent?.rent),
     rentSource: posNum(rent?.rent) ? 'AVM' : null,
     lastSalePrice: posNum(rec?.lastSalePrice),
@@ -167,7 +166,14 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     address || [street, city, state, zip].filter(Boolean).join(', ')
   ).trim();
   if (!full) return { status: 400, body: { error: 'address required' } };
-  const wantEstimates = fields === 'all';
+
+  // fields: 'record' (default) = 1 call, property details only.
+  //         'all'               = + AVM value + rent estimate.
+  //         'value'             = AVM value only (for the monthly value refresh).
+  const needValue = fields === 'all' || fields === 'value';
+  const needRent = fields === 'all';
+  const needRecord = fields !== 'value';
+  const want = { value: needValue, rent: needRent, record: needRecord };
 
   const out = {
     value: null, valueSource: null, valueRange: null,
@@ -182,12 +188,17 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     }
   };
 
+  // what still needs filling, for the given `fields`
+  const missing = () =>
+    (needValue && out.value == null) ||
+    (needRent && out.rentEstimate == null) ||
+    (needRecord && out.beds == null);
+
   // 1. Rentcast (primary AVM + record)
-  const rc = await fromRentcast(full, wantEstimates);
-  fill(rc);
+  await fromRentcast(full, want).then(fill);
 
   // 2. RapidAPI Zillow — backfill whatever's still missing
-  if (out.value == null || out.rentEstimate == null || out.beds == null) {
+  if (missing()) {
     const rapid = await fromRapidApi(full);
     fill(rapid);
     if (rapid?.value && out.valueSource == null) out.valueSource = 'Zillow';
@@ -195,27 +206,19 @@ export async function propertyLookup({ street, city, state, zip, address, fields
   }
 
   // 3. Redfin (unofficial internal API; opt-in) — backfill what's still missing
-  if (out.value == null || out.rentEstimate == null || out.beds == null) {
+  if (missing()) {
     const rf = await redfinLookup(full);
     fill(rf);
     if (rf?.value && out.valueSource == null) out.valueSource = 'Redfin';
     if (rf?.rentEstimate && out.rentSource == null) out.rentSource = 'Redfin';
   }
 
-  // 4. Assessed value (from the record already fetched) as a market-value proxy
-  if (out.value == null && rc?.assessedValue) {
-    out.value = rc.assessedValue;
-    out.valueSource = 'assessed';
-  }
-
-  // 5. Census area medians — only for still-empty value / rent
-  if (out.value == null || out.rentEstimate == null) {
+  // 4. Census area-median RENT only — never for value (a ZIP median is not this
+  //    property's market value, and stale sale prices are worse; leave value
+  //    blank rather than fill it with something that isn't an estimate).
+  if (needRent && out.rentEstimate == null) {
     const area = await fromCensus(zip);
-    if (area?.areaValue && out.value == null) {
-      out.value = area.areaValue;
-      out.valueSource = 'area median';
-    }
-    if (area?.areaRent && out.rentEstimate == null) {
+    if (area?.areaRent) {
       out.rentEstimate = area.areaRent;
       out.rentSource = 'area median';
     }

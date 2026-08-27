@@ -142,6 +142,27 @@ Zillow/Redfin scrape** — those have no API and block scraping. Rentcast is a
 licensed data API; the paste path parses text *you* provide.
 
 Autofill only fills **blank** fields — it never overwrites something you typed.
+**Current value** is only ever set from a real estimate (AVM / Zestimate) —
+never a stale sale price or a ZIP-level median.
+
+### What updates itself each month
+
+On the first visit of a new calendar month the dashboard, without you touching
+anything:
+
+- snapshots each property's net into `prevNet` so the "vs last month" trend is
+  correct;
+- **re-fetches every property's current value** from a fresh AVM (1 API call
+  each) and appends a point to its value history — which keeps appreciation,
+  annualized return, the sparkline, cap rate, and the portfolio value/gain
+  totals current on their own;
+- lets `reviewedMonth` / `rentPaidMonth` lapse, so the review reminder and the
+  "Rent due" badges come back.
+
+Everything else is a number only you know — **rent** (your lease amount),
+**property tax** (your actual bill), and the personal monthly costs (utilities,
+PG&E, water, recology, repairs, HOA). Those stay manual on purpose; an estimate
+would be worse than the real figure you entered.
 
 **Keeping API cost/quota down:**
 - Rentcast results are cached in `localStorage` for 14 days (`src/lib/lookupCache.js`)
@@ -209,7 +230,8 @@ Property {
            feeVal,
            payment: 'Ziprent direct deposit' | 'Zelle' | 'PayPal' | 'Personal cash/check' },
   prevNet,          // last month's net, for the trend line (null = first month);
-                    //   auto-snapshotted from current net on the first visit of a new month
+                    //   auto-snapshotted on the first visit of a new month, when
+                    //   `value` is also re-fetched from a fresh AVM
   updatedAt,        // timestamp; older than STALE_DAYS flags the card
   reviewedMonth,    // 'YYYY-MM' marked reviewed; a new month clears it and the
                     //   dashboard shows a "needs review" reminder bar
