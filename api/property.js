@@ -2,10 +2,15 @@
 // shape but keep the calls into ../server/handlers.js identical.
 
 import { capabilities, propertyLookup } from '../server/handlers.js';
+import { requireSession } from '../server/auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'method not allowed' });
+    return;
+  }
+  if (!requireSession(req.headers.authorization)) {
+    res.status(401).json({ error: 'unauthorized' });
     return;
   }
 

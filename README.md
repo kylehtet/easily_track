@@ -218,6 +218,32 @@ app then loads from it on start and pushes every change back (debounced), with a
 
 Single-user, last-write-wins. Code: `server/dataStore.js`, `src/lib/remoteStore.js`.
 
+## Access (login gate)
+
+Optional. Set to run it as a private site for one client — a login page plus a
+second factor, and every `/api/*` route rejects requests without a session.
+
+- **First factor:** Firebase email/password (free Spark plan — no Identity
+  Platform / billing). You create the one account in the Firebase console
+  (Authentication → Users → Add user). There is no sign-up page.
+- **Second factor:** an authenticator-app code (TOTP, RFC 6238, `server/totp.js`
+  — no SMS, no third party).
+- After both, the server issues a 30-day signed session token
+  (`SESSION_SECRET`, HMAC). `ALLOWED_EMAIL` is a hard allowlist — even a valid
+  Firebase account that isn't that address is refused.
+
+Turn it on by setting **all** of `FIREBASE_PROJECT_ID`, `ALLOWED_EMAIL`,
+`TOTP_SECRET`, `SESSION_SECRET` (server) plus the `VITE_FIREBASE_*` client
+config. Leave them unset for an open build (local dev). See `DEPLOY.md` for the
+step-by-step and `.env.example` for every var.
+
+```bash
+npm run totp:setup -- client@example.com   # prints TOTP_SECRET + an otpauth:// URL
+```
+
+Code: `src/Root.jsx` (gate), `src/components/Login.jsx`, `src/lib/auth.js`,
+`src/lib/firebase.js` (lazy-loaded), `server/auth.js`, `api/auth.js`.
+
 ## Data model
 
 ```

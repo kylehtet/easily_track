@@ -30,6 +30,10 @@ function apiDevServer(env) {
     'KV_REST_API_URL',
     'KV_REST_API_TOKEN',
     'DATA_FILE',
+    'FIREBASE_PROJECT_ID',
+    'ALLOWED_EMAIL',
+    'TOTP_SECRET',
+    'SESSION_SECRET',
   ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k];
   }
@@ -54,6 +58,30 @@ function apiDevServer(env) {
             dataGet,
             dataPut,
           } = await import('./server/handlers.js');
+          const { authStatus, authVerify, requireSession } = await import(
+            './server/auth.js'
+          );
+
+          // auth endpoint — never guarded
+          if (url.pathname === '/api/auth' && req.method === 'GET') {
+            const { status, body } = authStatus();
+            return send(status, body);
+          }
+          if (url.pathname === '/api/auth' && req.method === 'POST') {
+            let payload = {};
+            try {
+              payload = JSON.parse((await readBody(req)) || '{}');
+            } catch {
+              return send(400, { error: 'invalid JSON body' });
+            }
+            const { status, body } = await authVerify(payload);
+            return send(status, body);
+          }
+
+          // everything else needs a valid session (when auth is configured)
+          if (!requireSession(req.headers.authorization)) {
+            return send(401, { error: 'unauthorized' });
+          }
 
           if (url.pathname === '/api/data' && req.method === 'GET') {
             const { status, body } = await dataGet();

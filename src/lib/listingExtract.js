@@ -3,6 +3,8 @@
 // ANTHROPIC_API_KEY. Without that key the endpoint reports itself unconfigured
 // and the UI hides the paste box.
 
+import { apiFetch } from './auth.js';
+
 /**
  * @param {string} text  raw listing text pasted by the user
  * @param {object|null} known  fields already found locally — model skips them
@@ -14,7 +16,7 @@
  * @throws {Error} with a human-readable message on failure
  */
 export async function extractListing(text, known = null, { signal } = {}) {
-  const res = await fetch('/api/extract-listing', {
+  const res = await apiFetch('/api/extract-listing', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, known: known || undefined }),

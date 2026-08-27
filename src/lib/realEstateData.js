@@ -7,6 +7,8 @@
 // RENTCAST_API_KEY the endpoint reports itself unconfigured and the UI hides
 // the "Look up property" button.
 
+import { apiFetch } from './auth.js';
+
 /** @returns {Promise<{ propertyLookup, rentcast, rapidapi, redfin, listing: boolean }>} */
 export async function getCapabilities() {
   const off = {
@@ -17,7 +19,7 @@ export async function getCapabilities() {
     listing: false,
   };
   try {
-    const res = await fetch('/api/property');
+    const res = await apiFetch('/api/property');
     if (!res.ok) return off;
     const c = (await res.json())?.configured || {};
     return {
@@ -49,7 +51,7 @@ export async function lookupProperty(address, { signal, fields = 'record' } = {}
     ['fields', fields],
   ]).toString();
 
-  const res = await fetch(`/api/property?${qs}`, { signal });
+  const res = await apiFetch(`/api/property?${qs}`, { signal });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data?.error || `lookup failed (${res.status})`);

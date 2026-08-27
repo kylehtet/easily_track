@@ -3,10 +3,12 @@
 // data survives redeploys and follows you across devices. localStorage stays as
 // an offline cache / fallback either way. See server/dataStore.js.
 
+import { apiFetch } from './auth.js';
+
 /** @returns {Promise<{ configured: boolean, properties: Array|null }>} */
 export async function loadRemote() {
   try {
-    const res = await fetch('/api/data');
+    const res = await apiFetch('/api/data');
     if (!res.ok) return { configured: false, properties: null };
     const data = await res.json();
     return {
@@ -21,7 +23,7 @@ export async function loadRemote() {
 /** @returns {Promise<boolean>} true on a confirmed save */
 export async function saveRemote(properties) {
   try {
-    const res = await fetch('/api/data', {
+    const res = await apiFetch('/api/data', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ properties }),

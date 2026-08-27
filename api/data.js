@@ -2,8 +2,14 @@
 // it. Backed by ../server/dataStore.js (KV or a JSON file).
 
 import { dataGet, dataPut } from '../server/handlers.js';
+import { requireSession } from '../server/auth.js';
 
 export default async function handler(req, res) {
+  if (!requireSession(req.headers.authorization)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+
   if (req.method === 'GET') {
     const { status, body } = await dataGet();
     res.status(status).json(body);
