@@ -14,8 +14,10 @@ color, green carries the secondary / negative role. Box corners are rounded.
 
 - Vite + React
 - Plain CSS, no UI framework
-- Persistence: `localStorage` key `the-ledger-v1` (per browser, no login)
-- Two optional API routes (`/api/*`) for autofill — dormant unless you add keys
+- Persistence: `localStorage` by default; **optional server store** (`/api/data`)
+  so data survives redeploys and syncs across devices — see below
+- Optional API routes (`/api/*`) for autofill + persistence — dormant unless
+  configured via `.env`
 
 ## Getting started
 
@@ -35,10 +37,13 @@ in the keys — `vite dev` picks them up automatically.
 ## Layout
 
 ```
-api/                            deploy wrappers (Vercel-style) for the two routes
-├── property.js
-└── extract-listing.js
-server/handlers.js              the actual route logic — holds the API keys, Node-only
+api/                            deploy wrappers (Vercel-style) for the routes
+├── property.js                 address → value/rent/details
+├── extract-listing.js          listing text → fields (Claude)
+└── data.js                     GET/PUT the property list (server store)
+server/
+├── handlers.js                 route logic — holds the API keys, Node-only
+└── dataStore.js                KV / JSON-file persistence backend
 vite.config.js                  serves /api/* during `vite dev` via the same handlers
 src/
 ├── App.jsx                     state, sort/filter, inline-edit + modal wiring, persistence
@@ -58,8 +63,9 @@ src/
 │   ├── mortgage.js             amortization (monthly P&I)
 │   ├── estimates.js            state property-tax rates, insurance rate
 │   ├── addressLookup.js        free geocoders (Nominatim, Census JSONP)
-│   ├── realEstateData.js       client for /api/property (Rentcast lookup)
+│   ├── realEstateData.js       client for /api/property (address lookup chain)
 │   ├── lookupCache.js          14-day localStorage cache for lookups
+│   ├── remoteStore.js          client for /api/data (optional server persistence)
 │   ├── listingExtract.js       client for /api/extract-listing (Claude)
 │   ├── listingParse.js         free local regex pass over pasted listing text
 │   ├── storage.js              load / save to localStorage
@@ -166,6 +172,24 @@ The form's "Find address" box is a free, keyless type-ahead: OpenStreetMap
 Nominatim first, then the US Census geocoder (via JSONP, since it sends no CORS
 header). Picking a result fills street / city / state / zip; all stay editable.
 Provider is switchable via `ADDRESS_PROVIDER` in `src/lib/config.js`.
+
+## Persistence
+
+By default the property list lives in the browser's `localStorage` — which
+**does** survive redeploys to the same domain (it's in your browser, not the
+server), but is lost if the domain changes, you switch devices/browsers, or you
+clear site data.
+
+For durable, cross-device storage, configure a **server store** (`.env`) — the
+app then loads from it on start and pushes every change back (debounced), with a
+"synced" chip in the header. `localStorage` stays as an offline cache.
+
+| Store | Env | Good for |
+|---|---|---|
+| KV / Redis over REST | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | serverless (Upstash, Vercel KV — Vercel injects these when you attach a KV store) |
+| JSON file | `DATA_FILE=/abs/path/store.json` | a host with a persistent disk (Railway/Render/Fly/VPS) or local use |
+
+Single-user, last-write-wins. Code: `server/dataStore.js`, `src/lib/remoteStore.js`.
 
 ## Data model
 

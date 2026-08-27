@@ -26,6 +26,9 @@ function apiDevServer(env) {
     'RAPIDAPI_KEY',
     'RAPIDAPI_ZILLOW_HOST',
     'CENSUS_API_KEY',
+    'KV_REST_API_URL',
+    'KV_REST_API_TOKEN',
+    'DATA_FILE',
   ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k];
   }
@@ -43,9 +46,28 @@ function apiDevServer(env) {
         };
 
         try {
-          const { capabilities, propertyLookup, extractListing } = await import(
-            './server/handlers.js'
-          );
+          const {
+            capabilities,
+            propertyLookup,
+            extractListing,
+            dataGet,
+            dataPut,
+          } = await import('./server/handlers.js');
+
+          if (url.pathname === '/api/data' && req.method === 'GET') {
+            const { status, body } = await dataGet();
+            return send(status, body);
+          }
+          if (url.pathname === '/api/data' && req.method === 'PUT') {
+            let payload = {};
+            try {
+              payload = JSON.parse((await readBody(req)) || '{}');
+            } catch {
+              return send(400, { error: 'invalid JSON body' });
+            }
+            const { status, body } = await dataPut(payload);
+            return send(status, body);
+          }
 
           if (url.pathname === '/api/property' && req.method === 'GET') {
             const params = Object.fromEntries(url.searchParams);

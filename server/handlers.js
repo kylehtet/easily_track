@@ -4,6 +4,7 @@
 // process.env — nothing here is bundled into the client.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loadData, saveData, dataStoreKind } from './dataStore.js';
 
 const RENTCAST_BASE = 'https://api.rentcast.io/v1';
 
@@ -19,7 +20,33 @@ export function capabilities() {
     // always available but too rough to trigger an automatic lookup on its own.
     propertyLookup: rentcast || rapidapi,
     listing: Boolean(process.env.ANTHROPIC_API_KEY),
+    dataStore: Boolean(dataStoreKind()),
   };
+}
+
+// ---- server-side persistence of the property list ----------------------
+
+export async function dataGet() {
+  if (!dataStoreKind()) return { status: 200, body: { configured: false } };
+  try {
+    const properties = await loadData();
+    return { status: 200, body: { configured: true, properties: properties ?? null } };
+  } catch (err) {
+    return { status: 502, body: { configured: true, error: err.message } };
+  }
+}
+
+export async function dataPut({ properties }) {
+  if (!dataStoreKind()) return { status: 501, body: { error: 'no data store configured' } };
+  if (!Array.isArray(properties)) {
+    return { status: 400, body: { error: 'properties array required' } };
+  }
+  try {
+    await saveData(properties);
+    return { status: 200, body: { ok: true, count: properties.length } };
+  } catch (err) {
+    return { status: 502, body: { error: err.message } };
+  }
 }
 
 const settle = (p) => p.catch(() => null);

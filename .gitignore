@@ -145,6 +145,8 @@ vite.config.ts.timestamp-*
 # local rental data — never commit real property figures or API keys
 *.local.json
 data/local/
+/data/
+
 
 # editor / OS junk
 .DS_Store

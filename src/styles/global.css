@@ -750,6 +750,28 @@ button:focus-visible {
   margin-top: 10px;
 }
 
+/* ---- server-sync chip in the header ---- */
+.sync-chip {
+  margin-left: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--dash);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sync-chip.sync-synced {
+  color: var(--neg); /* green token */
+  border-color: var(--neg);
+}
+.sync-chip.sync-error {
+  color: var(--pos); /* red token */
+  border-color: var(--pos);
+}
+
 /* ---- card beds/baths line ---- */
 .card-meta-line {
   font-family: var(--mono);

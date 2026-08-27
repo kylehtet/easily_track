@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from './components/Header.jsx';
 import SummaryBar from './components/SummaryBar.jsx';
 import SortFilterBar from './components/SortFilterBar.jsx';
@@ -6,6 +6,7 @@ import PropertyCard from './components/PropertyCard.jsx';
 import PropertyModal from './components/PropertyModal.jsx';
 import { BASE_COSTS, netIncome, num, appreciationPct } from './lib/calculations.js';
 import { loadList, saveList } from './lib/storage.js';
+import { loadRemote, saveRemote } from './lib/remoteStore.js';
 import { seedProperties } from './data/sampleProperties.js';
 import { uid } from './lib/id.js';
 
@@ -91,9 +92,50 @@ export default function App() {
   const [filter, setFilter] = useState('all');
   const [edit, setEdit] = useState({ key: null, val: '' });
   const [modal, setModal] = useState(null); // { id: string | null, form }
+  const [sync, setSync] = useState(null); // null=local-only | 'syncing' | 'synced' | 'error'
 
+  const remoteOn = useRef(false);
+  const skipEcho = useRef(false);
+  const pushTimer = useRef(null);
+
+  // Hydrate from the server store once, if one is configured.
+  useEffect(() => {
+    let live = true;
+    loadRemote().then((r) => {
+      if (!live) return;
+      remoteOn.current = r.configured;
+      if (!r.configured) return;
+      if (r.properties) {
+        skipEcho.current = true;
+        setList(r.properties);
+        saveList(r.properties);
+        setSync('synced');
+      } else {
+        // store is empty — seed it from what we have locally
+        setSync('syncing');
+        saveRemote(list).then((ok) => live && setSync(ok ? 'synced' : 'error'));
+      }
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist every change: localStorage always, server store (debounced) when on.
   useEffect(() => {
     saveList(list);
+    if (!remoteOn.current) return;
+    if (skipEcho.current) {
+      skipEcho.current = false;
+      return;
+    }
+    setSync('syncing');
+    clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(async () => {
+      const ok = await saveRemote(list);
+      setSync(ok ? 'synced' : 'error');
+    }, 800);
   }, [list]);
 
   const mutate = (fn) => setList((cur) => fn(cur.slice()));
@@ -198,7 +240,11 @@ export default function App() {
   return (
     <div className="ledger-page">
       <div className="ledger-shell">
-        <Header monthLabel={monthLabel.toLowerCase()} onAdd={openAdd} />
+        <Header
+          monthLabel={monthLabel.toLowerCase()}
+          onAdd={openAdd}
+          sync={sync}
+        />
         <SummaryBar list={list} />
         <SortFilterBar
           sortBy={sortBy}
