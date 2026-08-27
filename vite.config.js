@@ -25,6 +25,7 @@ function apiDevServer(env) {
     'LISTING_MODEL',
     'RAPIDAPI_KEY',
     'RAPIDAPI_ZILLOW_HOST',
+    'REDFIN_ENABLED',
     'CENSUS_API_KEY',
     'KV_REST_API_URL',
     'KV_REST_API_TOKEN',

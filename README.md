@@ -43,6 +43,7 @@ api/                            deploy wrappers (Vercel-style) for the routes
 └── data.js                     GET/PUT the property list (server store)
 server/
 ├── handlers.js                 route logic — holds the API keys, Node-only
+├── redfin.js                   Node port of the reteps/redfin unofficial client
 └── dataStore.js                KV / JSON-file persistence backend
 vite.config.js                  serves /api/* during `vite dev` via the same handlers
 src/
@@ -125,8 +126,12 @@ median`):
 1. **Rentcast** — AVM value + rent, plus the property record (beds/baths/sqft/
    last sale/tax). Its tax **assessment** is used as a value proxy if the AVM misses.
 2. **RapidAPI Zillow** *(optional, `RAPIDAPI_KEY` + `RAPIDAPI_ZILLOW_HOST`)* —
-   backfills value / rent / beds when Rentcast comes up short.
-3. **US Census ACS area medians** *(optional, free `CENSUS_API_KEY`)* — last-resort
+   backfills value / rent / beds.
+3. **Redfin** *(optional, `REDFIN_ENABLED=1`, no key)* — Redfin's **unofficial
+   internal API** (a Node port of `github.com/reteps/redfin`): estimate, rent
+   estimate, public record. Undocumented and against Redfin's ToS — personal,
+   low-volume use only; can break or rate-limit at any time.
+4. **US Census ACS area medians** *(optional, free `CENSUS_API_KEY`)* — last-resort
    ballpark for value / rent, clearly tagged "area median".
 
 The mortgage and estimate figures are client-side math (`src/lib/mortgage.js`,

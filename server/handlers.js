@@ -5,6 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { loadData, saveData, dataStoreKind } from './dataStore.js';
+import { redfinLookup } from './redfin.js';
 
 const RENTCAST_BASE = 'https://api.rentcast.io/v1';
 
@@ -13,12 +14,14 @@ export function capabilities() {
   const rapidapi = Boolean(
     process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_ZILLOW_HOST
   );
+  const redfin = Boolean(process.env.REDFIN_ENABLED);
   return {
     rentcast,
     rapidapi,
-    // any real per-property source — the free Census area-median fallback is
-    // always available but too rough to trigger an automatic lookup on its own.
-    propertyLookup: rentcast || rapidapi,
+    redfin,
+    // any real per-property source — the Census area-median fallback is a
+    // ballpark and doesn't count toward triggering an automatic lookup.
+    propertyLookup: rentcast || rapidapi || redfin,
     listing: Boolean(process.env.ANTHROPIC_API_KEY),
     dataStore: Boolean(dataStoreKind()),
   };
@@ -191,13 +194,21 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     if (rapid?.rentEstimate && out.rentSource == null) out.rentSource = 'Zillow';
   }
 
-  // 3. Assessed value (from the record already fetched) as a market-value proxy
+  // 3. Redfin (unofficial internal API; opt-in) — backfill what's still missing
+  if (out.value == null || out.rentEstimate == null || out.beds == null) {
+    const rf = await redfinLookup(full);
+    fill(rf);
+    if (rf?.value && out.valueSource == null) out.valueSource = 'Redfin';
+    if (rf?.rentEstimate && out.rentSource == null) out.rentSource = 'Redfin';
+  }
+
+  // 4. Assessed value (from the record already fetched) as a market-value proxy
   if (out.value == null && rc?.assessedValue) {
     out.value = rc.assessedValue;
     out.valueSource = 'assessed';
   }
 
-  // 4. Census area medians — only for still-empty value / rent
+  // 5. Census area medians — only for still-empty value / rent
   if (out.value == null || out.rentEstimate == null) {
     const area = await fromCensus(zip);
     if (area?.areaValue && out.value == null) {

@@ -7,9 +7,15 @@
 // RENTCAST_API_KEY the endpoint reports itself unconfigured and the UI hides
 // the "Look up property" button.
 
-/** @returns {Promise<{ propertyLookup: boolean, rentcast: boolean, rapidapi: boolean, listing: boolean }>} */
+/** @returns {Promise<{ propertyLookup, rentcast, rapidapi, redfin, listing: boolean }>} */
 export async function getCapabilities() {
-  const off = { propertyLookup: false, rentcast: false, rapidapi: false, listing: false };
+  const off = {
+    propertyLookup: false,
+    rentcast: false,
+    rapidapi: false,
+    redfin: false,
+    listing: false,
+  };
   try {
     const res = await fetch('/api/property');
     if (!res.ok) return off;
@@ -18,6 +24,7 @@ export async function getCapabilities() {
       propertyLookup: Boolean(c.propertyLookup),
       rentcast: Boolean(c.rentcast),
       rapidapi: Boolean(c.rapidapi),
+      redfin: Boolean(c.redfin),
       listing: Boolean(c.listing),
     };
   } catch {
