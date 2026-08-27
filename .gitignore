@@ -141,3 +141,16 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# local rental data — never commit real property figures or API keys
+*.local.json
+data/local/
+
+# editor / OS junk
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Claude Code local state, if present
+.claude/
