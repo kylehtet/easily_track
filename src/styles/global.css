@@ -458,6 +458,7 @@ button:focus-visible {
 }
 .control-group {
   display: flex;
+  flex-wrap: wrap; /* five sort chips do not fit across a phone */
   gap: 4px;
   align-items: center;
 }
@@ -1369,6 +1370,30 @@ button:focus-visible {
   }
   .extra-row .input-amt {
     width: 88px;
+  }
+  /* The panel hangs off the LEFT edge when anchored to the right edge of a
+     button that is itself near the left of a narrow screen. Anchor it to the
+     button's left instead and let it use the width of the page. */
+  .account-panel {
+    left: 0;
+    right: auto;
+    min-width: 0;
+    width: calc(100vw - 28px);
+    max-width: 340px;
+  }
+  .controls-row {
+    gap: 12px;
+    padding: 12px 0 18px;
+  }
+  .control-group {
+    gap: 6px;
+  }
+  .seg {
+    padding: 7px 12px;
+  }
+  /* Two stats per row reads better than four squeezed onto one. */
+  .stat {
+    min-width: 45%;
   }
   /* Four controls abreast is a desktop idea; stack them and let the selects
      use the full width instead of overflowing on their longest option. */
