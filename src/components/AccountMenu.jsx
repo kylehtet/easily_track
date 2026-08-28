@@ -6,6 +6,7 @@ import {
   firebaseSignOut,
   logout,
 } from '../lib/auth.js';
+import PasswordInput from './PasswordInput.jsx';
 
 const splitName = (full) => {
   const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
@@ -157,20 +158,17 @@ export default function AccountMenu() {
 
           {view === 'password' && (
             <form className="account-form" onSubmit={savePassword}>
-              <input
-                type="password"
-                autoComplete="current-password"
-                placeholder="Current password"
+              <PasswordInput
                 value={cur}
-                onChange={(e) => setCur(e.target.value)}
+                onChange={setCur}
+                placeholder="Current password"
                 autoFocus
               />
-              <input
-                type="password"
-                autoComplete="new-password"
-                placeholder="New password (6+ chars)"
+              <PasswordInput
                 value={next}
-                onChange={(e) => setNext(e.target.value)}
+                onChange={setNext}
+                placeholder="New password (6+ chars)"
+                autoComplete="new-password"
               />
               <div className="account-actions">
                 <button type="button" className="link-btn" onClick={() => go('menu')}>

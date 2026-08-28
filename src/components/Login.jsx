@@ -6,30 +6,7 @@ import {
   resetPassword,
   devSignIn,
 } from '../lib/auth.js';
-
-function PasswordInput({ value, onChange, placeholder = 'Password', autoFocus }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="pw-field">
-      <input
-        type={show ? 'text' : 'password'}
-        autoComplete="current-password"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        autoFocus={autoFocus}
-      />
-      <button
-        type="button"
-        className="pw-toggle"
-        onClick={() => setShow((s) => !s)}
-        tabIndex={-1}
-      >
-        {show ? 'hide' : 'show'}
-      </button>
-    </div>
-  );
-}
+import PasswordInput from './PasswordInput.jsx';
 
 export default function Login({ mode, onDone, initialView = 'login', onBack }) {
   const dev = mode === 'dev';

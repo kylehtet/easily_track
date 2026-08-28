@@ -221,13 +221,13 @@ button:focus-visible {
 }
 .pw-field input {
   flex: 1;
-  /* room for both our SHOW toggle and whatever icon a password manager
-     injects at the right edge */
-  padding-right: 96px;
+  min-width: 0;
+  /* room for the SHOW toggle sitting at the right edge */
+  padding-right: 62px;
 }
 .pw-toggle {
   position: absolute;
-  right: 38px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -295,6 +295,12 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.account-form .pw-field {
+  width: 100%;
+}
+.account-form .pw-field input {
+  padding-right: 62px; /* the shorthand below would otherwise reclaim it */
 }
 .account-form input {
   border: 1px solid var(--rule-2);
