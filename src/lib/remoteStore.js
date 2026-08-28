@@ -1,26 +1,68 @@
-// Client side of optional server-side persistence (/api/data). When a store is
-// configured, the app loads from it on start and pushes every change back, so
-// data survives redeploys and follows you across devices. localStorage stays as
-// an offline cache / fallback either way. See server/dataStore.js.
+// Client side of server persistence (/api/data).
+//
+// The important distinction here is between "this deployment has no data store"
+// and "it has one but the request failed". Collapsing those two into a single
+// falsy value used to mean a transient network blip silently downgraded the
+// session to localStorage-only, with the user still happily editing and nothing
+// reaching the server — and a later save could then overwrite good server data
+// with a stale local copy. So every result says which case it is, and the app
+// refuses to write until it has successfully read.
 
 import { apiFetch } from './auth.js';
 
-/** @returns {Promise<{ configured: boolean, properties: Array|null }>} */
+/**
+ * @returns {Promise<{ configured: boolean, ok: boolean, properties: Array|null,
+ *                     error: string }>}
+ *   configured — a server store exists for this deployment
+ *   ok         — we actually got its contents (safe to start writing)
+ */
 export async function loadRemote() {
   try {
     const res = await apiFetch('/api/data');
-    if (!res.ok) return { configured: false, properties: null };
-    const data = await res.json();
+    // Read the body even on a non-2xx: dataGet answers 502 with
+    // { configured: true, error } when the store exists but is unreachable,
+    // and that distinction is the whole point of this function.
+    const data = await res.json().catch(() => null);
+
+    if (data && typeof data.configured === 'boolean') {
+      if (!data.configured) {
+        return { configured: false, ok: true, properties: null, error: '' };
+      }
+      if (res.ok) {
+        return {
+          configured: true,
+          ok: true,
+          properties: Array.isArray(data.properties) ? data.properties : null,
+          error: '',
+        };
+      }
+      return {
+        configured: true,
+        ok: false,
+        properties: null,
+        error: data.error || `server returned ${res.status}`,
+      };
+    }
+
+    // Unparseable / unexpected response. Assume a store may exist and refuse to
+    // write rather than risk clobbering it.
     return {
-      configured: Boolean(data?.configured),
-      properties: Array.isArray(data?.properties) ? data.properties : null,
+      configured: true,
+      ok: false,
+      properties: null,
+      error: `unexpected response (${res.status})`,
     };
-  } catch {
-    return { configured: false, properties: null };
+  } catch (err) {
+    return {
+      configured: true,
+      ok: false,
+      properties: null,
+      error: err?.message || 'network error',
+    };
   }
 }
 
-/** @returns {Promise<boolean>} true on a confirmed save */
+/** @returns {Promise<{ ok: boolean, error: string }>} */
 export async function saveRemote(properties) {
   try {
     const res = await apiFetch('/api/data', {
@@ -28,8 +70,10 @@ export async function saveRemote(properties) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ properties }),
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return { ok: true, error: '' };
+    const data = await res.json().catch(() => null);
+    return { ok: false, error: data?.error || `server returned ${res.status}` };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'network error' };
   }
 }

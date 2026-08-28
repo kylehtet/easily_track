@@ -4,7 +4,20 @@
 // process.env — nothing here is bundled into the client.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { loadData, saveData, dataStoreKind } from './dataStore.js';
+import {
+  loadData,
+  saveData,
+  clearData,
+  dataStoreKind,
+  isMultiUserStore,
+} from './dataStore.js';
+import {
+  dbConfigured,
+  upsertUser,
+  addrCacheKey,
+  getCachedLookup,
+  setCachedLookup,
+} from './db.js';
 import { redfinLookup } from './redfin.js';
 
 const RENTCAST_BASE = 'https://api.rentcast.io/v1';
@@ -24,29 +37,75 @@ export function capabilities() {
     propertyLookup: rentcast || rapidapi || redfin,
     listing: Boolean(process.env.ANTHROPIC_API_KEY),
     dataStore: Boolean(dataStoreKind()),
+    multiUser: isMultiUserStore(),
   };
+}
+
+/**
+ * Records the account in the users table on sign-in. Best effort — a failure
+ * here must not block a valid login, since the properties tables key off the
+ * uid in the session token, not off this row.
+ */
+export async function registerUser(user) {
+  if (!dbConfigured() || !user?.uid) return;
+  try {
+    await upsertUser(user);
+  } catch (err) {
+    console.error('registerUser failed:', err.message);
+  }
 }
 
 // ---- server-side persistence of the property list ----------------------
 
-export async function dataGet() {
+export async function dataGet(user) {
   if (!dataStoreKind()) return { status: 200, body: { configured: false } };
   try {
-    const properties = await loadData();
+    const properties = await loadData(user.uid);
     return { status: 200, body: { configured: true, properties: properties ?? null } };
   } catch (err) {
     return { status: 502, body: { configured: true, error: err.message } };
   }
 }
 
-export async function dataPut({ properties }) {
+// Guard rails on what a client may store. Without these one bad or hostile
+// client could push an unbounded payload straight into the database.
+const MAX_PROPERTIES = 500;
+const MAX_PAYLOAD_BYTES = 2_000_000; // 2 MB of JSON is far beyond any real portfolio
+
+export async function dataPut(user, { properties }) {
   if (!dataStoreKind()) return { status: 501, body: { error: 'no data store configured' } };
   if (!Array.isArray(properties)) {
     return { status: 400, body: { error: 'properties array required' } };
   }
+  if (properties.length > MAX_PROPERTIES) {
+    return {
+      status: 413,
+      body: { error: `too many properties (limit ${MAX_PROPERTIES})` },
+    };
+  }
+  if (properties.some((p) => !p || typeof p !== 'object' || !p.id)) {
+    return { status: 400, body: { error: 'every property needs an id' } };
+  }
+  const ids = new Set(properties.map((p) => String(p.id)));
+  if (ids.size !== properties.length) {
+    return { status: 400, body: { error: 'duplicate property ids' } };
+  }
+  if (JSON.stringify(properties).length > MAX_PAYLOAD_BYTES) {
+    return { status: 413, body: { error: 'payload too large' } };
+  }
   try {
-    await saveData(properties);
+    await saveData(user.uid, properties);
     return { status: 200, body: { ok: true, count: properties.length } };
+  } catch (err) {
+    return { status: 502, body: { error: err.message } };
+  }
+}
+
+export async function dataDelete(user) {
+  if (!dataStoreKind()) return { status: 501, body: { error: 'no data store configured' } };
+  try {
+    await clearData(user.uid);
+    return { status: 200, body: { ok: true } };
   } catch (err) {
     return { status: 502, body: { error: err.message } };
   }
@@ -167,6 +226,26 @@ export async function propertyLookup({ street, city, state, zip, address, fields
   ).trim();
   if (!full) return { status: 400, body: { error: 'address required' } };
 
+  // Shared cache first. A paid lookup is spent once per address for the whole
+  // deployment rather than once per browser, which is the difference between
+  // a free tier surviving a handful of users and not surviving at all.
+  const cacheKey = dbConfigured()
+    ? street || city || state || zip
+      ? addrCacheKey({ street, city, state, zip })
+      : addrCacheKey({ street: full })
+    : '';
+  // The monthly refresh (fields:'value') exists precisely to get a NEW number,
+  // so it must not be answered from a 30-day-old cache entry.
+  if (cacheKey && fields !== 'value') {
+    try {
+      const hit = await getCachedLookup(cacheKey);
+      if (hit) return { status: 200, body: { ...hit, cached: true } };
+    } catch (err) {
+      // A cache miss must never break the lookup itself.
+      console.error('lookup cache read failed:', err.message);
+    }
+  }
+
   // fields: 'record' (default) = 1 call, property details only.
   //         'all'               = + AVM value + rent estimate.
   //         'value'             = AVM value only (for the monthly value refresh).
@@ -230,6 +309,18 @@ export async function propertyLookup({ street, city, state, zip, address, fields
   if (!gotSomething) {
     return { status: 502, body: { error: 'no data found for that address' } };
   }
+
+  // Only cache a full lookup. A 'value'-only refresh would otherwise poison the
+  // cache with a record that has no beds/rent, and the next person asking for
+  // everything would get that thin answer back as a hit.
+  if (cacheKey && fields === 'all') {
+    try {
+      await setCachedLookup(cacheKey, out);
+    } catch (err) {
+      console.error('lookup cache write failed:', err.message);
+    }
+  }
+
   return { status: 200, body: out };
 }
 

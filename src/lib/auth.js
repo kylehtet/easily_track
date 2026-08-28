@@ -3,8 +3,10 @@
 // only setup step — no authenticator app.
 
 import { getFirebaseAuth, getCurrentUser } from './firebase.js';
+import { clearAllLists } from './storage.js';
 
 const TOKEN_KEY = 'the-ledger:session';
+const ACCOUNT_KEY = 'the-ledger:account';
 
 export function sessionToken() {
   try {
@@ -14,17 +16,43 @@ export function sessionToken() {
   }
 }
 
-function setSession(value) {
+/**
+ * Which account this browser is signed in as: `{ uid, email, name }`, or null.
+ * The uid namespaces the cached property list (see lib/storage.js), so it has
+ * to be read before any data is loaded.
+ */
+export function currentAccount() {
   try {
-    if (value) localStorage.setItem(TOKEN_KEY, value);
-    else localStorage.removeItem(TOKEN_KEY);
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.uid ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSession(token, account) {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      if (account?.uid) localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account));
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(ACCOUNT_KEY);
+    }
   } catch {
     /* ignore */
   }
 }
 
+/**
+ * Ends the session and drops every cached ledger in this browser. The wipe is
+ * deliberate: the next person to sign in here must not see the last one's
+ * properties, not even for the moment before the server answers.
+ */
 export function logout() {
   setSession('');
+  clearAllLists();
 }
 
 /** @returns {Promise<{ configured: boolean, mode: 'firebase'|'dev'|null }>} */
@@ -49,7 +77,16 @@ async function exchange(payload) {
   if (!res.ok || !data?.token) {
     throw new Error(data?.error || 'Sign-in failed.');
   }
-  setSession(data.token);
+  const previous = currentAccount();
+  if (previous && previous.uid !== data.uid) {
+    // Different person on this browser — drop whatever the last one cached.
+    clearAllLists();
+  }
+  setSession(data.token, {
+    uid: data.uid,
+    email: data.email || '',
+    name: data.name || '',
+  });
 }
 
 const friendly = (err) => {
@@ -73,27 +110,55 @@ export async function signIn(email, password) {
   } catch (err) {
     throw new Error(friendly(err));
   }
-  if (!cred.user.emailVerified) {
+
+  // Clicking the verification link does not update a token this browser is
+  // already holding — Firebase caches ID tokens for up to an hour, so a user
+  // who just verified still looks unverified to both checks below. reload()
+  // re-reads the account from Firebase; getIdToken(true) then mints a token
+  // that actually carries email_verified: true for the server to see.
+  try {
+    await cred.user.reload();
+  } catch {
+    /* offline or transient — fall through to the check below */
+  }
+  const user = auth.currentUser || cred.user;
+  if (!user.emailVerified) {
     const err = new Error('Verify your email first — check your inbox.');
     err.needsVerification = true;
     throw err;
   }
-  await exchange({ idToken: await cred.user.getIdToken() });
+  await exchange({ idToken: await user.getIdToken(true) });
 }
 
-export async function signUp(email, password) {
+/**
+ * Creates the account and stores the person's name on the Firebase profile as
+ * `displayName`. Firebase is the source of truth for it: the name then rides
+ * along in the `name` claim of every ID token, so the server gets it verified
+ * rather than having to trust whatever the client posts.
+ */
+export async function signUp(email, password, firstName, lastName) {
   const auth = await getFirebaseAuth();
-  const { createUserWithEmailAndPassword, sendEmailVerification } = await import(
-    'firebase/auth'
-  );
+  const { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } =
+    await import('firebase/auth');
   try {
     const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const displayName = [firstName, lastName]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    if (displayName) await updateProfile(cred.user, { displayName });
     await sendEmailVerification(cred.user);
   } catch (err) {
     throw new Error(friendly(err));
   }
 }
 
+/**
+ * Re-sends the verification link. Reloads first: if the address turns out to
+ * already be verified, there's nothing to resend and saying so is more useful
+ * than a second email.
+ * @returns {Promise<boolean>} true if a mail went out, false if already verified
+ */
 export async function resendVerification(email, password) {
   const auth = await getFirebaseAuth();
   const { signInWithEmailAndPassword, sendEmailVerification } = await import(
@@ -101,7 +166,14 @@ export async function resendVerification(email, password) {
   );
   try {
     const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+    try {
+      await cred.user.reload();
+    } catch {
+      /* transient — fall through and just resend */
+    }
+    if ((auth.currentUser || cred.user).emailVerified) return false;
     await sendEmailVerification(cred.user);
+    return true;
   } catch (err) {
     throw new Error(friendly(err));
   }
@@ -131,6 +203,34 @@ export async function changePassword(currentPassword, newPassword) {
   } catch (err) {
     throw new Error(friendly(err));
   }
+}
+
+/**
+ * Updates the person's name. The name travels in the session token's `name`
+ * claim, so changing it on the Firebase profile alone would leave the app
+ * showing the old one until the 30-day session expired — we mint a fresh token
+ * and re-exchange it so the header and the database both catch up immediately.
+ */
+export async function changeName(firstName, lastName) {
+  const displayName = [firstName, lastName]
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!displayName) throw new Error('Please enter your name.');
+
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error('Please sign out and back in before changing your name.');
+  }
+  const { updateProfile } = await import('firebase/auth');
+  try {
+    await updateProfile(user, { displayName });
+    await user.reload();
+    await exchange({ idToken: await user.getIdToken(true) });
+  } catch (err) {
+    throw new Error(friendly(err));
+  }
+  return displayName;
 }
 
 export async function firebaseSignOut() {

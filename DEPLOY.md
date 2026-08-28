@@ -1,4 +1,4 @@
-# Deploying The Ledger for one client
+# Deploying EasyPort
 
 Recommended host: **Vercel** (the `api/` folder is already in Vercel's function
 format). Free "Hobby" tier is enough for a single user.
@@ -37,10 +37,12 @@ Project → **Settings → Environment Variables**:
 4. **Authentication → Settings → Authorized domains** — add your Vercel domain
    (e.g. `easily-track.vercel.app` and any custom domain).
 
-The client creates their own account from the app's **sign-up** page; Firebase
-emails a verification link they must click before they can sign in. (Or you
-pre-create it: Authentication → Users → Add user, then have them use
-"Forgot password" once — but they'd still need to verify the email.)
+Users create their own account from the app's **sign-up** page; Firebase emails
+a verification link they must click before they can sign in. Each account gets
+its own private ledger — see section 5.
+
+Anyone with a verified email can sign up — there is no allowlist. Accounts are
+separated by Firebase uid, so one user never sees another's properties.
 
 ### 4b. Environment variables (Vercel → Settings → Environment Variables)
 
@@ -51,7 +53,6 @@ pre-create it: Authentication → Users → Add user, then have them use
 | `VITE_FIREBASE_PROJECT_ID` | `<project-id>` |
 | `VITE_FIREBASE_APP_ID` | from 4a step 3 |
 | `FIREBASE_PROJECT_ID` | same as `VITE_FIREBASE_PROJECT_ID` |
-| `ALLOWED_EMAIL` | the client's email, lowercase — hard allowlist |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
 
 Redeploy. The site now opens to the login page: sign up → click the email link
@@ -60,6 +61,29 @@ password + sign out; the login page has forgot-password.
 
 To lock everyone out (rotate access): change `SESSION_SECRET` and redeploy —
 every existing session token stops validating.
+
+## 5. Database (required for more than one user)
+
+Each account's properties live in Postgres, keyed by their Firebase uid. Without
+`DATABASE_URL` the app falls back to a single shared bucket (KV / JSON file) or
+to per-browser `localStorage` — fine for one person, wrong once you publish.
+
+1. Vercel → your project → **Storage** → **Create Database** → **Neon Postgres**
+   (free tier). Attaching it injects `DATABASE_URL` into the project for you.
+   Outside Vercel: sign up at [neon.tech](https://neon.tech), create a project,
+   and copy its pooled connection string into `DATABASE_URL`.
+2. Redeploy. That's it — the `users` and `properties` tables are created on the
+   first request that touches them, so there's no migration step to run.
+
+Schema (see `server/db.js`):
+
+| Table | What's in it |
+|---|---|
+| `users` | `uid`, `email`, `created_at`, `last_seen` — one row per account |
+| `properties` | `uid` + `id` primary key, the queryable columns (`street`, `city`, `state`, `zip`, `rent`, `value`), and the full nested record in a `data` JSONB column |
+
+Every read and write is filtered by the `uid` carried in the session token, so
+one account cannot reach another's rows.
 
 ## Local development
 
@@ -75,4 +99,4 @@ SESSION_SECRET=any-long-random-string
 ```
 
 That gives a password-only gate (`mode: "dev"`). Use the real `FIREBASE_*` +
-`ALLOWED_EMAIL` + `SESSION_SECRET` values to exercise the full Firebase flow.
+`SESSION_SECRET` values to exercise the full Firebase flow.

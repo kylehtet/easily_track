@@ -1,9 +1,9 @@
 {
-  "name": "the-ledger",
+  "name": "easyport",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Rental net income dashboard — track properties and see net income at a glance.",
+  "description": "EasyPort — rental property portfolio: track properties and see net income at a glance.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",
+    "@neondatabase/serverless": "^1.1.0",
     "firebase": "^12.18.0",
     "jose": "^6.2.10",
     "react": "^18.3.1",

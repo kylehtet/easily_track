@@ -56,7 +56,17 @@ export default function PropertyCard({
     <div className="property-card">
       <div className="card-head" onClick={onToggle}>
         <div className="card-head-top">
-          <div className="card-street">{p.street}</div>
+          <button
+            type="button"
+            className="card-street"
+            title="Open this property"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+          >
+            {p.street}
+          </button>
           <div className="card-badges">
             <span className="card-badge">
               {p.mgmt.type === 'ziprent' ? 'ZIPRENT' : 'SELF-MANAGED'}
@@ -135,7 +145,7 @@ export default function PropertyCard({
               onEdit();
             }}
           >
-            Edit
+            Open →
           </button>
           <button
             className="link-btn is-danger"

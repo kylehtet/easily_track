@@ -1,15 +1,19 @@
 // Auth for the whole app, then a signed session token the client sends on
-// every /api/* call.
+// every /api/* call. The token carries the account's Firebase uid, which is
+// what scopes every row in the database — see server/db.js.
 //
-// Two modes, picked by which vars are set (else auth is OFF — every request
-// allowed, for local dev / an intentionally open deploy):
+// Three modes, picked by which vars are set:
 //
-//   'firebase' (production): FIREBASE_PROJECT_ID + ALLOWED_EMAIL + SESSION_SECRET.
-//     Login = Firebase email/password. The email must be verified (Firebase
-//     sends the link at sign-up) and must equal ALLOWED_EMAIL. No 2FA at login.
+//   'firebase' (production): FIREBASE_PROJECT_ID + SESSION_SECRET.
+//     Login = Firebase email/password; the email must be verified (Firebase
+//     sends the link at sign-up). Signup is open: anyone who verifies an email
+//     gets an account, and their own private ledger scoped to their uid.
 //
 //   'dev' (local testing only): AUTH_DEV_PASSWORD + SESSION_SECRET. Login is
 //     that plain password. Never set AUTH_DEV_PASSWORD in production.
+//
+//   off (neither): every request is allowed and shares one local account, for
+//     `npm run dev` without any of this configured.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -21,12 +25,13 @@ const JWKS = createRemoteJWKSet(
 );
 
 const SESSION_TTL_MS = 30 * 864e5; // 30 days
-const DEV_EMAIL = '__dev__';
+const DEV_USER = { uid: '__dev__', email: '__dev__', name: 'Local' };
+const OPEN_USER = { uid: '__local__', email: '__local__', name: '' };
 
 /** @returns {'firebase' | 'dev' | null} */
 export function authMode() {
   if (!process.env.SESSION_SECRET) return null;
-  if (process.env.FIREBASE_PROJECT_ID && process.env.ALLOWED_EMAIL) return 'firebase';
+  if (process.env.FIREBASE_PROJECT_ID) return 'firebase';
   if (process.env.AUTH_DEV_PASSWORD) return 'dev';
   return null;
 }
@@ -34,8 +39,6 @@ export function authMode() {
 export function authConfigured() {
   return authMode() !== null;
 }
-
-const allowedEmail = () => String(process.env.ALLOWED_EMAIL || '').toLowerCase();
 
 function eq(a, b) {
   const x = Buffer.from(String(a));
@@ -50,7 +53,9 @@ async function verifyFirebaseIdToken(idToken) {
     audience: pid,
   });
   return {
+    uid: String(payload.sub || payload.user_id || ''),
     email: String(payload.email || '').toLowerCase(),
+    name: String(payload.name || '').trim(),
     emailVerified: payload.email_verified === true,
   };
 }
@@ -87,20 +92,21 @@ export function authStatus() {
 }
 
 /**
- * Turn first-factor proof into a session token.
+ * Turn a sign-in into a session token.
  *   dev mode:      { devPassword }
- *   firebase mode: { idToken }  (email must be verified + == ALLOWED_EMAIL)
+ *   firebase mode: { idToken }  (the email must be verified)
+ * @returns {Promise<{ status: number, body: object, user?: { uid, email } }>}
  */
 export async function authVerify({ idToken, devPassword }) {
   const mode = authMode();
   if (!mode) return { status: 200, body: { configured: false } };
 
-  let email;
+  let user;
   if (mode === 'dev') {
     if (!eq(devPassword, process.env.AUTH_DEV_PASSWORD)) {
       return { status: 401, body: { error: 'wrong password' } };
     }
-    email = DEV_EMAIL;
+    user = DEV_USER;
   } else {
     let fb;
     try {
@@ -108,8 +114,8 @@ export async function authVerify({ idToken, devPassword }) {
     } catch {
       return { status: 401, body: { error: 'sign-in could not be verified' } };
     }
-    if (fb.email !== allowedEmail()) {
-      return { status: 403, body: { error: 'this account is not authorized' } };
+    if (!fb.uid) {
+      return { status: 401, body: { error: 'sign-in could not be verified' } };
     }
     if (!fb.emailVerified) {
       return {
@@ -117,19 +123,31 @@ export async function authVerify({ idToken, devPassword }) {
         body: { error: 'verify your email first — check your inbox for the link' },
       };
     }
-    email = fb.email;
+    user = { uid: fb.uid, email: fb.email, name: fb.name };
   }
 
-  const token = signSession({ email, exp: Date.now() + SESSION_TTL_MS });
-  return { status: 200, body: { token } };
+  const token = signSession({ ...user, exp: Date.now() + SESSION_TTL_MS });
+  return {
+    status: 200,
+    body: { token, uid: user.uid, email: user.email, name: user.name || '' },
+    user,
+  };
 }
 
-/** Guard for the data routes. Returns true when the request may proceed. */
-export function requireSession(authorizationHeader) {
+/**
+ * Guard for the data routes.
+ * @returns {{ uid: string, email: string, name: string } | null} the account, or
+ *   null when the request should be rejected with a 401.
+ */
+export function sessionUser(authorizationHeader) {
   const mode = authMode();
-  if (!mode) return true;
+  if (!mode) return OPEN_USER;
   const token = String(authorizationHeader || '').replace(/^Bearer\s+/i, '');
   const claims = readSession(token);
-  if (!claims || !claims.exp || claims.exp < Date.now()) return false;
-  return claims.email === (mode === 'dev' ? DEV_EMAIL : allowedEmail());
+  if (!claims || !claims.uid || !claims.exp || claims.exp < Date.now()) return null;
+  return {
+    uid: claims.uid,
+    email: String(claims.email || ''),
+    name: String(claims.name || ''),
+  };
 }

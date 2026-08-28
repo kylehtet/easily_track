@@ -1,4 +1,9 @@
 // A ledger amount that turns into a text input when clicked.
+//
+// Both states render the same box — see `.editable-amt` / `.ledger-input` in
+// global.css — so switching between them doesn't move anything on the row.
+// The resting state is a <button> rather than a <span> so the figures are
+// reachable by keyboard, not just by mouse.
 
 export default function EditableAmount({
   editing,
@@ -16,7 +21,9 @@ export default function EditableAmount({
         value={value}
         autoFocus
         inputMode="decimal"
+        aria-label="Amount"
         onClick={(e) => e.stopPropagation()}
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onCommit}
         onKeyDown={(e) => {
@@ -28,7 +35,8 @@ export default function EditableAmount({
   }
 
   return (
-    <span
+    <button
+      type="button"
       className="editable-amt"
       title="Click to edit"
       onClick={(e) => {
@@ -37,6 +45,6 @@ export default function EditableAmount({
       }}
     >
       {display}
-    </span>
+    </button>
   );
 }

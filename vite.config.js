@@ -30,8 +30,8 @@ function apiDevServer(env) {
     'KV_REST_API_URL',
     'KV_REST_API_TOKEN',
     'DATA_FILE',
+    'DATABASE_URL',
     'FIREBASE_PROJECT_ID',
-    'ALLOWED_EMAIL',
     'SESSION_SECRET',
     'AUTH_DEV_PASSWORD',
   ]) {
@@ -60,10 +60,12 @@ function apiDevServer(env) {
             capabilities,
             propertyLookup,
             extractListing,
+            registerUser,
             dataGet,
             dataPut,
+            dataDelete,
           } = await import('./server/handlers.js');
-          const { authStatus, authVerify, requireSession } = await import(
+          const { authStatus, authVerify, sessionUser } = await import(
             './server/auth.js'
           );
 
@@ -79,17 +81,19 @@ function apiDevServer(env) {
             } catch {
               return send(400, { error: 'invalid JSON body' });
             }
-            const { status, body } = await authVerify(payload);
+            const { status, body, user } = await authVerify(payload);
+            if (user) await registerUser(user);
             return send(status, body);
           }
 
           // everything else needs a valid session (when auth is configured)
-          if (!requireSession(req.headers.authorization)) {
+          const user = sessionUser(req.headers.authorization);
+          if (!user) {
             return send(401, { error: 'unauthorized' });
           }
 
           if (url.pathname === '/api/data' && req.method === 'GET') {
-            const { status, body } = await dataGet();
+            const { status, body } = await dataGet(user);
             return send(status, body);
           }
           if (url.pathname === '/api/data' && req.method === 'PUT') {
@@ -99,7 +103,11 @@ function apiDevServer(env) {
             } catch {
               return send(400, { error: 'invalid JSON body' });
             }
-            const { status, body } = await dataPut(payload);
+            const { status, body } = await dataPut(user, payload);
+            return send(status, body);
+          }
+          if (url.pathname === '/api/data' && req.method === 'DELETE') {
+            const { status, body } = await dataDelete(user);
             return send(status, body);
           }
 

@@ -1,4 +1,4 @@
-# The Ledger
+# EasyPort
 
 A plug-and-play webapp for tracking rental properties and seeing net income at a
 glance. Add a property, enter its costs once, and the dashboard keeps a running
@@ -73,7 +73,6 @@ src/
 │   ├── storage.js              load / save to localStorage
 │   ├── config.js               SHOW_ZERO_ROWS, STALE_DAYS, ADDRESS_PROVIDER
 │   └── id.js                   unique id helper
-├── data/sampleProperties.js    first-run seed data
 └── styles/global.css
 ```
 
@@ -230,17 +229,21 @@ rejects requests without a session.
   until it's clicked, that account can't get a session. No authenticator app,
   no 2FA at login.
 - On a verified sign-in the server issues a 30-day signed session token
-  (`SESSION_SECRET`, HMAC). `ALLOWED_EMAIL` is a hard allowlist — a valid
-  Firebase account that isn't that address is refused.
+  (`SESSION_SECRET`, HMAC) carrying the account's Firebase uid. That uid scopes
+  every database read and write, so each user sees only their own properties.
+- **Signup is open** — anyone who verifies an email gets their own ledger. There
+  is no allowlist: the only gate is a verified email address.
 
-Turn it on with `FIREBASE_PROJECT_ID` + `ALLOWED_EMAIL` + `SESSION_SECRET`
-(server) plus the `VITE_FIREBASE_*` client config. Unset → open build (local
-dev). `AUTH_DEV_PASSWORD` + `SESSION_SECRET` (no Firebase) gives a local
-password-only gate for testing the flow. See `DEPLOY.md` and `.env.example`.
+Turn it on with `FIREBASE_PROJECT_ID` + `SESSION_SECRET` (server) plus the
+`VITE_FIREBASE_*` client config, and set `DATABASE_URL` so accounts get separate
+storage. Unset → open build (local dev). `AUTH_DEV_PASSWORD` + `SESSION_SECRET`
+(no Firebase) gives a local password-only gate for testing the flow. See
+`DEPLOY.md` and `.env.example`.
 
 Code: `src/Root.jsx` (gate), `src/components/Login.jsx`,
 `src/components/AccountMenu.jsx`, `src/lib/auth.js`, `src/lib/firebase.js`
-(lazy-loaded), `server/auth.js`, `api/auth.js`.
+(lazy-loaded), `server/auth.js`, `api/auth.js`, `server/db.js` (per-user
+Postgres), `server/dataStore.js` (backend selection).
 
 ## Data model
 
