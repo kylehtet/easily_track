@@ -3,19 +3,20 @@
 // api/property.js when deployed. Both are backed by server/handlers.js and hold
 // the Rentcast key server-side — this file never sees it.
 //
-// This is NOT a Zillow/Redfin scraper: Rentcast is a licensed data API. Without
-// RENTCAST_API_KEY the endpoint reports itself unconfigured and the UI hides
-// the "Look up property" button.
+// This is NOT a Zillow/Redfin scraper. The keyless path is county assessor open
+// data (server/publicRecords.js); Rentcast, if a key is configured, is a
+// licensed data API layered on top of it.
 
 import { apiFetch } from './auth.js';
 
-/** @returns {Promise<{ propertyLookup, rentcast, rapidapi, redfin, listing: boolean }>} */
+/** @returns {Promise<{ propertyLookup, rentcast, rapidapi, redfin, publicRecords, listing: boolean }>} */
 export async function getCapabilities() {
   const off = {
     propertyLookup: false,
     rentcast: false,
     rapidapi: false,
     redfin: false,
+    publicRecords: false,
     listing: false,
   };
   try {
@@ -27,6 +28,7 @@ export async function getCapabilities() {
       rentcast: Boolean(c.rentcast),
       rapidapi: Boolean(c.rapidapi),
       redfin: Boolean(c.redfin),
+      publicRecords: Boolean(c.publicRecords),
       listing: Boolean(c.listing),
     };
   } catch {

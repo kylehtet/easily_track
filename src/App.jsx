@@ -8,6 +8,7 @@ import { BASE_COSTS, netIncome, num, appreciationPct } from './lib/calculations.
 import { loadList, saveList } from './lib/storage.js';
 import { loadRemote, saveRemote } from './lib/remoteStore.js';
 import { getCapabilities, lookupProperty } from './lib/realEstateData.js';
+import { estimateValueFromPurchase } from './lib/estimates.js';
 import { uid } from './lib/id.js';
 
 const currentYM = () => new Date().toISOString().slice(0, 7);
@@ -73,6 +74,7 @@ function emptyForm() {
     purchasePrice: '',
     purchaseDate: '',
     value: '',
+    valueSource: null,
     financing: { downPct: '20', ratePct: '', termYears: '30' },
     meta: null,
   };
@@ -99,6 +101,7 @@ function formFrom(p) {
     purchasePrice: p.purchasePrice ? String(p.purchasePrice) : '',
     purchaseDate: p.purchaseDate || '',
     value: p.value ? String(p.value) : '',
+    valueSource: p.valueSource || null,
     financing: {
       downPct: fin.downPct != null ? String(fin.downPct) : '20',
       ratePct: fin.ratePct != null ? String(fin.ratePct) : '',
@@ -252,10 +255,32 @@ export default function App({ authMode, accountId = null, onShowLanding } = {}) 
 
   const mutate = (fn) => setList((cur) => fn(cur.slice()));
 
-  // Re-fetch each property's current value from a fresh AVM. Value-only lookup
-  // (1 API call each), best effort, gentle pacing. Appends a valueHistory point
-  // when the number moves.
+  /** Append a value point when the number actually moved. */
+  const pushValue = (p, value) => {
+    const hist = Array.isArray(p.valueHistory) ? p.valueHistory : [];
+    const last = hist[hist.length - 1];
+    const changed = !last || num(last.value) !== value;
+    return changed ? hist.concat([{ date: todayISO(), value }]) : hist;
+  };
+
+  // Monthly value refresh, in two passes.
+  //
+  // First the free one: any value we estimated ourselves off the FHFA index
+  // gets re-indexed against the current table (which moves when hpi.js is
+  // regenerated). No key, no network, so it runs on every deployment.
+  //
+  // Then the paid one, only where a lookup API is configured: a value-only AVM
+  // call per property, best effort, gently paced.
   const refreshValues = async (props) => {
+    mutate((l) =>
+      l.map((p) => {
+        if (p.valueSource !== 'hpi') return p;
+        const est = estimateValueFromPurchase(p);
+        if (!est || est.value === num(p.value)) return p;
+        return { ...p, value: est.value, valueHistory: pushValue(p, est.value) };
+      })
+    );
+
     let caps;
     try {
       caps = await getCapabilities();
@@ -274,19 +299,11 @@ export default function App({ authMode, accountId = null, onShowLanding } = {}) 
         const v = Number(d?.value);
         if (!Number.isFinite(v) || v <= 0) continue;
         mutate((l) =>
-          l.map((q) => {
-            if (q.id !== p.id) return q;
-            const hist = Array.isArray(q.valueHistory) ? q.valueHistory : [];
-            const lastPt = hist[hist.length - 1];
-            const changed = !lastPt || Number(lastPt.value) !== v;
-            return {
-              ...q,
-              value: v,
-              valueHistory: changed
-                ? hist.concat([{ date: todayISO(), value: v }])
-                : hist,
-            };
-          })
+          l.map((q) =>
+            q.id === p.id
+              ? { ...q, value: v, valueSource: 'avm', valueHistory: pushValue(q, v) }
+              : q
+          )
         );
       } catch {
         /* address not covered / API error — leave this property as-is */
@@ -346,6 +363,7 @@ export default function App({ authMode, accountId = null, onShowLanding } = {}) 
         else if (kind === 'fee') q.mgmt.feeVal = val;
         else if (kind === 'value') {
           q.value = val;
+          q.valueSource = 'manual';
           const hist = Array.isArray(q.valueHistory) ? q.valueHistory : [];
           const last = hist[hist.length - 1];
           if (val > 0 && (!last || num(last.value) !== val)) {

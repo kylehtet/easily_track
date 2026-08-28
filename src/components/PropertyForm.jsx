@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { BASE_COSTS, num, netIncome, managementFee } from '../lib/calculations.js';
-import { fmt2, fmtPct } from '../lib/format.js';
+import { fmt0, fmt2, fmtPct } from '../lib/format.js';
 import { monthlyMortgage, loanAmount } from '../lib/mortgage.js';
 import {
   estimateMonthlyTax,
   estimateMonthlyInsurance,
   effectiveTaxRate,
+  estimateValueFromPurchase,
+  quarterLabel,
 } from '../lib/estimates.js';
 import { getCapabilities, lookupProperty } from '../lib/realEstateData.js';
 import { getCached, setCached } from '../lib/lookupCache.js';
@@ -104,6 +106,9 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
   }, []);
 
   const patch = (p) => setF((cur) => ({ ...cur, ...p }));
+  // Where the current value came from, so the monthly refresh knows whether it
+  // may move the number: 'hpi' is ours to re-index, 'manual' is the user's.
+  const setValue = (v, source) => patch({ value: v, valueSource: source });
   const setBase = (k, v) => patch({ base: { ...f.base, [k]: v } });
   const setFin = (k, v) => patch({ financing: { ...f.financing, [k]: v } });
   const setExtra = (i, key, v) =>
@@ -170,6 +175,7 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
     });
     const m = metaFrom(d);
     if (m) setF((cur) => ({ ...cur, meta: m }));
+    if (d.value) setF((cur) => ({ ...cur, valueSource: 'avm' }));
 
     const tag = (label, src) =>
       label + (src && src !== 'AVM' && src !== 'Zillow' ? ` (${src})` : '');
@@ -180,12 +186,15 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
       d.taxAnnual && 'tax',
       m && 'beds/baths',
     ].filter(Boolean);
+    // Name the county office when the record came from one — it is the reason
+    // these fields cost nothing, and it tells the user how far to trust them.
+    const from = d.recordSource ? ` — ${d.recordSource}` : '';
     setLookup({
       loading: false,
       error: '',
       note: bits.length
-        ? `Filled ${bits.join(', ')}${viaCache ? ' — cached' : ''}`
-        : 'No property data found for that address',
+        ? `Filled ${bits.join(', ')}${from}${viaCache ? ' · cached' : ''}`
+        : 'No record for that address in the free county data',
     });
   };
 
@@ -295,6 +304,17 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
     }));
   };
 
+  // Free alternative to an AVM: carry the purchase price forward on the FHFA
+  // state house-price index. No key, no API call — the table ships in hpi.js.
+  const indexed = estimateValueFromPurchase({
+    purchasePrice: f.purchasePrice,
+    purchaseDate: f.purchaseDate,
+    state: f.state,
+  });
+  const useIndexedValue = () => {
+    if (indexed) setValue(String(indexed.value), 'hpi');
+  };
+
   // ---- net-income preview ------------------------------------------------
   const pv = normalize(f);
   const pnet = netIncome(pv);
@@ -337,6 +357,7 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
       purchasePrice: num(f.purchasePrice),
       purchaseDate: f.purchaseDate || '',
       value: num(f.value),
+      valueSource: f.valueSource || null,
       financing: {
         downPct: num(f.financing.downPct),
         ratePct: num(f.financing.ratePct),
@@ -498,11 +519,35 @@ export default function PropertyForm({ mode, initialForm, onCancel, onSave, onDi
           <input
             className="mono"
             value={f.value}
-            onChange={(e) => patch({ value: e.target.value })}
+            onChange={(e) => setValue(e.target.value, 'manual')}
             placeholder="1240000"
             inputMode="decimal"
           />
         </label>
+      </div>
+
+      <div className="calc-out calc-value">
+        <button
+          type="button"
+          className="dashed-btn"
+          onClick={useIndexedValue}
+          disabled={!indexed}
+        >
+          Estimate value from purchase price
+        </button>
+        {indexed ? (
+          <span className="est-note">
+            ≈ {fmt0(indexed.value)} — FHFA {indexed.series} house-price index,{' '}
+            {quarterLabel(indexed.from)} → {quarterLabel(indexed.to)} (
+            {indexed.growth >= 0 ? '+' : '−'}
+            {fmtPct(Math.abs(indexed.growth))})
+            {indexed.stale && ' · index starts at 1991, so this is a floor'}
+          </span>
+        ) : (
+          <span className="est-note">
+            needs a purchase price and date · free, no API key
+          </span>
+        )}
       </div>
 
       <div className="finance-block">

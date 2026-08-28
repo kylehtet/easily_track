@@ -19,6 +19,7 @@ import {
   setCachedLookup,
 } from './db.js';
 import { redfinLookup } from './redfin.js';
+import { fromPublicRecords } from './publicRecords.js';
 
 const RENTCAST_BASE = 'https://api.rentcast.io/v1';
 
@@ -32,9 +33,12 @@ export function capabilities() {
     rentcast,
     rapidapi,
     redfin,
+    // County assessor open data. Keyless and always on, so the form can offer
+    // an automatic lookup on a deployment with no API keys at all.
+    publicRecords: true,
     // any real per-property source — the Census area-median fallback is a
     // ballpark and doesn't count toward triggering an automatic lookup.
-    propertyLookup: rentcast || rapidapi || redfin,
+    propertyLookup: true,
     listing: Boolean(process.env.ANTHROPIC_API_KEY),
     dataStore: Boolean(dataStoreKind()),
     multiUser: isMultiUserStore(),
@@ -259,6 +263,7 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     rentEstimate: null, rentSource: null,
     lastSalePrice: null, lastSaleDate: null, taxAnnual: null,
     beds: null, baths: null, sqft: null, yearBuilt: null,
+    assessedValue: null, recordSource: null,
   };
   const fill = (src) => {
     if (!src) return;
@@ -272,6 +277,15 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     (needValue && out.value == null) ||
     (needRent && out.rentEstimate == null) ||
     (needRecord && out.beds == null);
+
+  // 0. County assessor open data — free, keyless, and the authority on the
+  //    record fields, so it goes first. What it fills, nobody has to pay for.
+  if (needRecord) {
+    fill(await fromPublicRecords({ street, city, state, zip }));
+    // Its answer also spares us Rentcast's /properties call: one of the three
+    // requests a full lookup would otherwise spend against the free tier.
+    if (out.beds != null || out.sqft != null) want.record = false;
+  }
 
   // 1. Rentcast (primary AVM + record)
   await fromRentcast(full, want).then(fill);
@@ -307,7 +321,12 @@ export async function propertyLookup({ street, city, state, zip, address, fields
     out.value, out.rentEstimate, out.lastSalePrice, out.taxAnnual, out.beds, out.sqft,
   ].some((v) => v != null);
   if (!gotSomething) {
-    return { status: 502, body: { error: 'no data found for that address' } };
+    // With a paid source configured, finding nothing is worth reporting as a
+    // failure. Without one it is just an address in a county we have no adapter
+    // for — the everyday case on a keyless deployment, and not an error.
+    return caps.rentcast || caps.rapidapi || caps.redfin
+      ? { status: 502, body: { error: 'no data found for that address' } }
+      : { status: 200, body: out };
   }
 
   // Only cache a full lookup. A 'value'-only refresh would otherwise poison the

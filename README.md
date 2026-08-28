@@ -58,12 +58,14 @@ src/
 │   ├── EditableAmount.jsx      click-a-number-to-edit cell
 │   ├── ValueSparkline.jsx      dependency-free value-history sparkline
 │   ├── AddressAutocomplete.jsx type-ahead address search for the form
-│   └── PropertyModal.jsx       add / edit dialog: autofill, live preview
+│   ├── PropertyPage.jsx        one property on its own page (#/p/<id>)
+│   └── PropertyForm.jsx        add / edit form: autofill, live preview
 ├── lib/
 │   ├── calculations.js         the ONE place income + appreciation math lives
 │   ├── format.js               fmt2 / fmt0 / fmtCompact / fmtPct
 │   ├── mortgage.js             amortization (monthly P&I)
-│   ├── estimates.js            state property-tax rates, insurance rate
+│   ├── estimates.js            tax/insurance rates + FHFA-indexed value estimate
+│   ├── hpi.js                  GENERATED: FHFA house-price index, 1991 → today
 │   ├── addressLookup.js        free geocoders (Nominatim, Census JSONP)
 │   ├── realEstateData.js       client for /api/property (address lookup chain)
 │   ├── lookupCache.js          14-day localStorage cache for lookups
@@ -109,22 +111,33 @@ From that, `calculations.js` derives:
 
 ## Autofill
 
-The Add / Edit form can fill in fields for you. Two of the four mechanisms work
-with no setup; two need an API key.
+The Add / Edit form can fill in fields for you. Three of the five mechanisms
+work with no setup and no key; two need an API key.
 
 | Mechanism | Fills | Needs |
 |---|---|---|
 | **Mortgage calculator** | monthly mortgage (P&I) from price / down % / rate / term | nothing |
 | **Estimate taxes & insurance** | property tax (`price × state effective rate`), insurance (`value × 0.35%/yr`) | nothing |
-| **Address lookup** | value, rent estimate, last sale, tax, beds/baths/sqft — **fires automatically** when you enter/pick an address | `RENTCAST_API_KEY` (at least) |
+| **Estimate value from purchase price** | current value, by carrying the purchase price forward on the FHFA state house-price index | nothing |
+| **Address lookup** | beds/baths/sqft, year built, annual tax, last sale — **fires automatically** when you enter/pick an address | nothing (county open data) |
+| **AVM value + rent** | current value and market rent for the specific address, added to the same lookup | `RENTCAST_API_KEY` |
 | **Paste a listing** | price, rent, tax, HOA, beds/baths from listing text — regex first, Claude only for gaps | `ANTHROPIC_API_KEY` |
 
 The address lookup chains sources and merges whatever each one has, tagging the
-value/rent field with where it came from (`AVM`, `Zillow`, `assessed`, `area
-median`):
+value/rent field with where it came from (`AVM`, `Zillow`, `area median`) and
+naming the county office behind the record fields:
 
+0. **County assessor open data** *(free, keyless, always on —
+   `server/publicRecords.js`)*. The US Census geocoder resolves the address to a
+   county FIPS code, which selects an adapter for that county's open-data API:
+   beds/baths/sqft, year built, assessed value, the annual tax bill, and the
+   last sale date. Covered today: **San Francisco** (assessor secured roll) and
+   **New York City** (PLUTO, all five boroughs — lot-level, so no bed/bath
+   counts). Anywhere else returns nothing and the chain moves on. Adding a
+   county is one entry in `ADAPTERS`.
 1. **Rentcast** — AVM value + rent, plus the property record (beds/baths/sqft/
-   last sale/tax). Its tax **assessment** is used as a value proxy if the AVM misses.
+   last sale/tax) when the county data did not already cover it. Its tax
+   **assessment** is used as a value proxy if the AVM misses.
 2. **RapidAPI Zillow** *(optional, `RAPIDAPI_KEY` + `RAPIDAPI_ZILLOW_HOST`)* —
    backfills value / rent / beds.
 3. **Redfin** *(optional, `REDFIN_ENABLED=1`, no key)* — Redfin's **unofficial
@@ -133,6 +146,33 @@ median`):
    low-volume use only; can break or rate-limit at any time.
 4. **US Census ACS area medians** *(optional, free `CENSUS_API_KEY`)* — last-resort
    ballpark for value / rent, clearly tagged "area median".
+
+### Value without an API key
+
+`estimateValueFromPurchase()` in `src/lib/estimates.js` answers "what is it worth
+now?" without paying anyone: it takes the price you actually paid and moves it by
+how much house prices in your state have changed since, using the FHFA House
+Price Index (purchase-only, seasonally adjusted, quarterly, 1991 Q1 = 100).
+
+The index ships in `src/lib/hpi.js` — 52 series, generated, ~44 KB, no runtime
+network call. FHFA publishes a new quarter about two months after it closes:
+
+```
+npm run hpi     # refetch + rewrite src/lib/hpi.js, then commit and deploy
+```
+
+This is a *market* estimate, not an appraisal: it knows the state and the
+purchase date, and nothing about the house. A remodel, a bad roof, or a
+neighborhood that moved against the state trend will not show up. It is a
+starting number to correct, which is why the button never fires on its own.
+
+Values carry a `valueSource` (`'hpi'`, `'avm'`, `'manual'`). The monthly refresh
+re-indexes only the `'hpi'` ones — a number you typed is yours and never moves.
+
+Because source 0 needs no key, `propertyLookup` is always on: the automatic
+lookup fires on a deployment with no API keys at all. It also **saves paid
+calls** — when the assessor answers, Rentcast's `/properties` request is
+skipped, taking a full lookup from 3 calls to 2.
 
 The mortgage and estimate figures are client-side math (`src/lib/mortgage.js`,
 `src/lib/estimates.js`) — always available. Tax rates are rough state averages;

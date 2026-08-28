@@ -17,6 +17,11 @@ automatically. Redeploy. The header's "synced" chip confirms it's live.
 
 ## 3. Autofill keys (optional)
 
+Skippable. Without any of these the app still does address autocomplete, listing
+paste (local regex), the mortgage calculator, tax/insurance estimates, and
+current value indexed off the purchase price (`src/lib/hpi.js`). The keys buy
+per-address precision.
+
 Project → **Settings → Environment Variables**:
 
 | Var | Value |
